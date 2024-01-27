@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        html,
+        body {
+            /* disable margin and padding */
+            margin: 0 !important;
+            padding: 0 !important;
+            /* set background color to black since the canvas is not exactly 100% */
+            /* see src/runner.rs::start_app for more info */
+            background-color: black;
+        }
+    </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+
+<body style="margin: 0px;">
+    <!-- the canvas will be added here -->
+    <script type="module">
+        import init from "./mesh_to_sdf_client.js";
+        init();
+    </script>
+</body>
+
+</html>

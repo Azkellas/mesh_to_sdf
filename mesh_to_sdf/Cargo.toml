@@ -1,0 +1,24 @@
+[package]
+name = "mesh_to_sdf"
+version = "0.1.0"
+description = "Mesh to signed distance field (SDF) converter"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+authors = ["Etienne Desbois <e.desbois@hotmail.fr>"]
+homepage = "https://github.com/Azkellas/mesh_to_sdf"
+repository = "https://github.com/Azkellas/mesh_to_sdf"
+keywords = ["mesh", "sdf", "signed distance field", "distance field", "3d"]
+
+[dependencies]
+float-cmp = "0.9.0"
+itertools = "0.12.0"
+rayon = "1.8.1"
+
+[dev-dependencies]
+easy-gltf = "1.1.1"
+criterion = { version = "0.5.1", features = ["html_reports"] }
+
+[[bench]]
+name = "generate_sdf"
+harness = false
