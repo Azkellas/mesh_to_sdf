@@ -28,4 +28,6 @@ pub trait Point: Sized + Copy + Sync + Send {
     fn dist(&self, other: &Self) -> f32;
     /// Multiply a point by a scalar.
     fn mul(&self, other: f32) -> Self;
+    /// Divide two points by components.
+    fn comp_div(&self, other: &Self) -> Self;
 }

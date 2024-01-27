@@ -40,4 +40,8 @@ impl Point for [f32; 3] {
     fn mul(&self, other: f32) -> Self {
         [self[0] * other, self[1] * other, self[2] * other]
     }
+
+    fn comp_div(&self, other: &Self) -> Self {
+        [self[0] / other[0], self[1] / other[1], self[2] / other[2]]
+    }
 }

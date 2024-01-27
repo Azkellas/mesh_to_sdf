@@ -1,11 +1,27 @@
 use crate::point::Point;
 
-pub fn triangle_barycenter<V: Point>(a: &V, b: &V, c: &V) -> V {
+pub fn point_triangle_signed_distance<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) -> f32 {
+    let mut distance = point_triangle_distance(x0, x1, x2, x3);
+
+    // signed distance: positive if the point is outside the mesh, negative if inside.
+    // assume all normals are pointing outside the mesh.
+    let barycenter = triangle_barycenter(x1, x2, x3);
+    let direction = x0.sub(&barycenter);
+    // No need for it to be normalized.
+    let normal = triangle_normal(x1, x2, x3);
+    if direction.dot(&normal) < 0.0 {
+        distance = -distance;
+    }
+
+    distance
+}
+
+fn triangle_barycenter<V: Point>(a: &V, b: &V, c: &V) -> V {
     (a.add(b).add(c)).mul(1.0 / 3.0)
 }
 
 /// Note: the normal is NOT normalized.
-pub fn triangle_normal<V: Point>(a: &V, b: &V, c: &V) -> V {
+fn triangle_normal<V: Point>(a: &V, b: &V, c: &V) -> V {
     let ab = b.sub(a);
     let ac = c.sub(a);
     V::new(
@@ -17,7 +33,7 @@ pub fn triangle_normal<V: Point>(a: &V, b: &V, c: &V) -> V {
 
 /// Note: this is adapted from https://github.com/christopherbatty/SDFGen
 // find distance x0 is from triangle x1-x2-x3
-pub fn point_triangle_distance<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) -> f32 {
+fn point_triangle_distance<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) -> f32 {
     // first find barycentric coordinates of closest point on infinite plane
     let x03 = x0.sub(x3);
     let x13 = x1.sub(x3);
@@ -80,4 +96,18 @@ pub fn point_segment_distance<V: Point>(x0: &V, x1: &V, x2: &V) -> f32 {
 
     // and find the distance
     x0.dist(&x1.mul(s12).add(&x2.mul(1.0 - s12)))
+}
+
+pub fn triangle_bounding_box<V: Point>(a: &V, b: &V, c: &V) -> (V, V) {
+    let min = V::new(
+        f32::min(a.x(), f32::min(b.x(), c.x())),
+        f32::min(a.y(), f32::min(b.y(), c.y())),
+        f32::min(a.z(), f32::min(b.z(), c.z())),
+    );
+    let max = V::new(
+        f32::max(a.x(), f32::max(b.x(), c.x())),
+        f32::max(a.y(), f32::max(b.y(), c.y())),
+        f32::max(a.z(), f32::max(b.z(), c.z())),
+    );
+    (min, max)
 }

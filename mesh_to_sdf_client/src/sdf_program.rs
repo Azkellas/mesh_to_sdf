@@ -143,6 +143,7 @@ impl SdfProgram {
         wgpu::Features::empty()
     }
 
+    #[allow(clippy::unused_self)]
     pub fn process_input(&mut self, _input: &WinitInputHelper) -> bool {
         // nothing to do here for now.
         false
@@ -276,6 +277,7 @@ impl SdfProgram {
     }
 
     /// Draw ui with egui.
+    #[allow(clippy::unused_self)]
     pub fn draw_gizmos(&mut self, _ui: &mut egui::Ui) {
         // TODO: backport transform.
     }
@@ -286,20 +288,17 @@ impl SdfProgram {
             ui.separator();
             ui.end_row();
 
-            ui.label("Framerate:");
-            ui.label(std::format!("{:.0}fps", self.frame_rate.get()));
-            ui.end_row();
-
-            ui.separator();
-            ui.end_row();
-
             match self.parameters.file_name {
                 None => {
                     ui.label("No file loaded");
                 }
                 Some(ref file_name) => {
                     ui.label("Current file");
-                    ui.label(file_name);
+                    ui.label(
+                        file_name
+                            .rsplit_once('\\')
+                            .map_or(file_name.as_str(), |(_, name)| name),
+                    );
                 }
             };
             ui.end_row();
@@ -445,17 +444,17 @@ impl SdfProgram {
             ui.horizontal(|ui| {
                 ui.add(
                     egui::DragValue::new(&mut self.parameters.cell_count[0])
-                        .clamp_range(1..=64)
+                        .clamp_range(2..=100)
                         .prefix("x: "),
                 );
                 ui.add(
                     egui::DragValue::new(&mut self.parameters.cell_count[1])
-                        .clamp_range(1..=64)
+                        .clamp_range(2..=100)
                         .prefix("y: "),
                 );
                 ui.add(
                     egui::DragValue::new(&mut self.parameters.cell_count[2])
-                        .clamp_range(1..=64)
+                        .clamp_range(2..=100)
                         .prefix("z: "),
                 );
             });
@@ -529,13 +528,6 @@ impl SdfProgram {
             }
             ui.end_row();
         });
-
-        if ui.button("test alert").clicked() {
-            self.alert_message = Some((
-                "This is a test alert message".to_owned(),
-                web_time::Instant::now(),
-            ));
-        }
 
         if let Some((ref msg, ref start)) = self.alert_message {
             let timeout_s = 3.0_f32;
@@ -669,7 +661,7 @@ impl SdfProgram {
 
                 // a gltf scene can contain multiple models.
                 // we merge them in a single sdf.
-                let models = gltf::load_scene(device, queue, &path)?;
+                let models = gltf::load_scene(device, queue, path)?;
 
                 let (vertices, indices) =
                     models
@@ -677,25 +669,27 @@ impl SdfProgram {
                         .fold((vec![], vec![]), |(mut vertices, mut indices), model| {
                             // we need to offset the indices by the number of vertices we already have.
                             let len = vertices.len();
-                            vertices.extend(model.vertices().iter().map(|v| *v));
+                            vertices.extend(
+                                model
+                                    .vertices()
+                                    .iter()
+                                    .map(|v| [v.position.x, v.position.y, v.position.z]),
+                            );
                             indices
                                 .extend(model.indices().unwrap().iter().map(|i| *i + len as u32));
                             (vertices, indices)
                         });
 
                 // TODO: c/c'd from sdf.rs
-                let MinMaxResult::MinMax(xmin, xmax) =
-                    vertices.iter().map(|v| v.position.x).minmax()
+                let MinMaxResult::MinMax(xmin, xmax) = vertices.iter().map(|v| v[0]).minmax()
                 else {
                     anyhow::bail!("Bounding box is ill-defined")
                 };
-                let MinMaxResult::MinMax(ymin, ymax) =
-                    vertices.iter().map(|v| v.position.y).minmax()
+                let MinMaxResult::MinMax(ymin, ymax) = vertices.iter().map(|v| v[1]).minmax()
                 else {
                     anyhow::bail!("Bounding box is ill-defined")
                 };
-                let MinMaxResult::MinMax(zmin, zmax) =
-                    vertices.iter().map(|v| v.position.z).minmax()
+                let MinMaxResult::MinMax(zmin, zmax) = vertices.iter().map(|v| v[2]).minmax()
                 else {
                     anyhow::bail!("Bounding box is ill-defined")
                 };
@@ -709,11 +703,21 @@ impl SdfProgram {
                 self.model_info = Some(model_info);
 
                 let cell_radius = [
-                    (xmax - xmin) / self.parameters.cell_count[0] as f32,
-                    (ymax - ymin) / self.parameters.cell_count[1] as f32,
-                    (zmax - zmin) / self.parameters.cell_count[2] as f32,
+                    (xmax - xmin) / (self.parameters.cell_count[0] - 1) as f32,
+                    (ymax - ymin) / (self.parameters.cell_count[1] - 1) as f32,
+                    (zmax - zmin) / (self.parameters.cell_count[2] - 1) as f32,
                 ];
-                self.sdf = Sdf::new(device, &vertices, &indices, cell_radius).ok();
+                let start_cell = [xmin, ymin, zmin];
+
+                self.sdf = Sdf::new(
+                    device,
+                    &vertices,
+                    &indices,
+                    &start_cell,
+                    &cell_radius,
+                    &self.parameters.cell_count,
+                )
+                .ok();
 
                 self.last_run_info = Some(LastRunInfo {
                     time: start.elapsed().as_secs_f32() * 1000.0,

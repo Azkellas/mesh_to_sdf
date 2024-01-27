@@ -1,4 +1,3 @@
-use itertools::{Itertools, MinMaxResult};
 use wgpu::util::DeviceExt;
 
 use anyhow::Result;
@@ -30,61 +29,30 @@ pub struct Sdf {
 impl Sdf {
     pub fn new(
         device: &wgpu::Device,
-        vertices: &[easy_gltf::model::Vertex],
+        vertices: &[[f32; 3]],
         indices: &[u32],
-        cell_radius: [f32; 3],
+        start_cell: &[f32; 3],
+        cell_radius: &[f32; 3],
+        cell_count: &[u32; 3],
     ) -> Result<Self> {
-        let MinMaxResult::MinMax(xmin, xmax) = vertices.iter().map(|v| v.position.x).minmax()
-        else {
-            anyhow::bail!("Bounding box is ill-defined")
-        };
-        let MinMaxResult::MinMax(ymin, ymax) = vertices.iter().map(|v| v.position.y).minmax()
-        else {
-            anyhow::bail!("Bounding box is ill-defined")
-        };
-        let MinMaxResult::MinMax(zmin, zmax) = vertices.iter().map(|v| v.position.z).minmax()
-        else {
-            anyhow::bail!("Bounding box is ill-defined")
-        };
-
-        // generate points in x,y,z bounds with a cell radius of cell_radius
-        let mut query_points = vec![];
-        let xsize = ((xmax - xmin) / cell_radius[0]).ceil();
-        let ysize = ((ymax - ymin) / cell_radius[1]).ceil();
-        let zsize = ((zmax - zmin) / cell_radius[2]).ceil();
-
-        for xi in 0..xsize as u32 {
-            for yi in 0..ysize as u32 {
-                for zi in 0..zsize as u32 {
-                    let x = xmin + xi as f32 * cell_radius[0];
-                    let y = ymin + yi as f32 * cell_radius[1];
-                    let z = zmin + zi as f32 * cell_radius[2];
-                    query_points.push([x, y, z]);
-                }
-            }
-        }
-
-        let vertices = vertices
-            .iter()
-            .map(|v| [v.position[0], v.position[1], v.position[2]])
-            .collect_vec();
-
-        let data = mesh_to_sdf::generate_sdf(
-            &vertices,
+        let data = mesh_to_sdf::generate_grid_sdf(
+            vertices,
             mesh_to_sdf::Topology::TriangleList(Some(indices)),
-            &query_points,
+            start_cell,
+            cell_radius,
+            cell_count,
         );
 
         let uniforms = SdfUniforms {
-            start: [xmin, ymin, zmin, 0.0],
+            start: [start_cell[0], start_cell[1], start_cell[2], 0.0],
             end: [
-                xmin + cell_radius[0] * xsize,
-                ymin + cell_radius[1] * ysize,
-                zmin + cell_radius[2] * zsize,
+                start_cell[0] + cell_radius[0] * cell_count[0] as f32,
+                start_cell[1] + cell_radius[1] * cell_count[1] as f32,
+                start_cell[2] + cell_radius[2] * cell_count[2] as f32,
                 0.0,
             ],
             cell_size: [cell_radius[0], cell_radius[1], cell_radius[2], 0.0],
-            cell_count: [xsize as u32, ysize as u32, zsize as u32, 0],
+            cell_count: [cell_count[0], cell_count[1], cell_count[2], 0],
         };
 
         let uniforms_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -123,8 +91,8 @@ impl Sdf {
             data_buffer,
             bind_group,
 
-            cell_radius,
-            cell_count: query_points.len() as u32,
+            cell_radius: *cell_radius,
+            cell_count: cell_count[0] * cell_count[1] * cell_count[2],
         })
     }
 }

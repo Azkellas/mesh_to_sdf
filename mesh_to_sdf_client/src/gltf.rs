@@ -11,6 +11,6 @@ pub fn load_scene(
     Ok(gltf
         .iter()
         .flat_map(|scene| scene.models.iter())
-        .map(|m| m.clone())
+        .cloned()
         .collect())
 }

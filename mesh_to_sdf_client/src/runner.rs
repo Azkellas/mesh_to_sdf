@@ -399,8 +399,8 @@ async fn run(
                     if new_size.width > 0 && new_size.height > 0 {
                         config.width = new_size.width;
                         config.height = new_size.height;
-                        surface.configure(&context.device, &config);
-                        program.resize(&config, &context.device, &context.queue);
+                        surface.configure(&context.device, config);
+                        program.resize(config, &context.device, &context.queue);
                     }
                 }
 
@@ -417,7 +417,7 @@ async fn run(
                 if !data.shaders.is_empty() {
                     log::info!("rebuild shaders {:?}", data.shaders);
                     if let Err(program_error) =
-                        program.update_passes(&surface, &context.device, &context.adapter)
+                        program.update_passes(surface, &context.device, &context.adapter)
                     {
                         log::error!("{program_error:?}");
                     }
@@ -428,7 +428,7 @@ async fn run(
                 if data.lib == crate::reload_flags::LibState::Reloaded {
                     log::info!("reload lib");
                     if let Err(program_error) =
-                        program.update_passes(&surface, &context.device, &context.adapter)
+                        program.update_passes(surface, &context.device, &context.adapter)
                     {
                         log::error!("{program_error}");
                     }
