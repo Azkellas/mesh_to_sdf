@@ -34,22 +34,28 @@ where
     query_points
         .par_iter()
         .map(|query| {
-            //TODO: handle triangle strips
-            let triangles: Box<dyn Iterator<Item = usize>> = match indices {
+            let triangles: Box<dyn Iterator<Item = (usize, usize, usize)>> = match indices {
                 Topology::TriangleList(Some(triangles)) => {
-                    Box::new(triangles.iter().map(|x| (*x).into() as usize))
+                    Box::new(triangles.iter().map(|x| (*x).into() as usize).tuples())
                 }
-                Topology::TriangleList(None) => Box::new((0..vertices.len()).into_iter()),
-                Topology::TriangleStrip(_) => todo!(),
+                // TODO: test
+                Topology::TriangleList(None) => Box::new((0..vertices.len()).into_iter().tuples()),
+                // TODO: test
+                Topology::TriangleStrip(Some(triangles)) => Box::new(
+                    triangles
+                        .into_iter()
+                        .map(|x| (*x).into() as usize)
+                        .tuple_windows(),
+                ),
+                // TODO: test
+                Topology::TriangleStrip(None) => {
+                    Box::new((0..vertices.len()).into_iter().tuple_windows())
+                }
             };
 
             triangles
-                .tuples()
-                .map(|(ia, ib, ic)| {
-                    let a = &vertices[ia as usize];
-                    let b = &vertices[ib as usize];
-                    let c = &vertices[ic as usize];
-
+                .map(|(i, j, k)| (&vertices[i], &vertices[j], &vertices[k]))
+                .map(|(a, b, c)| {
                     // unsigned distance.
                     let mut distance = geo::point_triangle_distance(query, a, b, c);
 
