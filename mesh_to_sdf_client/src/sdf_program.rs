@@ -127,15 +127,20 @@ impl SdfProgram {
     }
 
     pub fn required_downlevel_capabilities() -> wgpu::DownlevelCapabilities {
-        wgpu::DownlevelCapabilities::default()
+        wgpu::DownlevelCapabilities {
+            flags: wgpu::DownlevelFlags::VERTEX_STORAGE,
+            shader_model: wgpu::ShaderModel::Sm5,
+            ..wgpu::DownlevelCapabilities::default()
+        }
     }
 
     pub fn required_limits() -> wgpu::Limits {
+        // Stricter than default.
         wgpu::Limits::downlevel_defaults()
     }
 
     pub fn required_features() -> wgpu::Features {
-        wgpu::Features::empty() | wgpu::Features::CLEAR_TEXTURE
+        wgpu::Features::empty()
     }
 
     pub fn process_input(&mut self, _input: &WinitInputHelper) -> bool {
@@ -551,19 +556,6 @@ impl SdfProgram {
     }
 
     pub fn render(&mut self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue) {
-        // Clear depth.
-        {
-            let mut command_encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-            command_encoder.clear_texture(
-                &self.depth_map.texture,
-                &wgpu::ImageSubresourceRange::default(),
-            );
-
-            queue.submit(Some(command_encoder.finish()));
-        }
-
         // render models
         // {
         //     let mut command_encoder =

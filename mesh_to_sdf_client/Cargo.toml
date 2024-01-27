@@ -11,9 +11,9 @@ keywords = ["mesh", "sdf", "signed distance field", "distance field", "3d"]
 
 [dependencies]
 mesh_to_sdf = { path = "../mesh_to_sdf", version="0.1.0" }
-egui = "0.25.0"
+egui = { git="https://github.com/emilk/egui.git", rev="5d0bc2bf7d1066a625b57b5576ea3ed7d3930e15"} # TODO: Waiting for 0.26 to update dependencies
 egui-gizmo = "0.14.1"
-wgpu = { version = "0.18.0", default-features = false }
+wgpu = { version = "0.19.1", default-features = false }
 winit_input_helper = "0.15.3"
 bytemuck = { version = "1.14.0", features = ["derive"] }
 web-time = "1.0.0"
@@ -24,11 +24,12 @@ glam = { version = "0.25.0", default-features = true, features = ["bytemuck", "m
 easy-gltf = { version= "1.1.1", default-features = true, features = ["names"] }
 image = "0.24.8"
 pollster = "0.3.0"
-egui-wgpu = { version = "0.25.0", features = ["winit"] }
-egui-winit = { version = "0.25.0", default-features = false }
+egui-wgpu = { git="https://github.com/emilk/egui.git", rev="5d0bc2bf7d1066a625b57b5576ea3ed7d3930e15", features = ["winit"] } # TODO: Waiting for 0.26 to update dependencies
+egui-winit = { git="https://github.com/emilk/egui.git", rev="5d0bc2bf7d1066a625b57b5576ea3ed7d3930e15", default-features = false } # TODO: Waiting for 0.26 to update dependencies
 log = "0.4.20"
-env_logger = "0.11.0"
+env_logger = "0.11.1"
 rfd = {version = "0.13.0", default-features = true, features = ["file-handle-inner"] }
+cfg-if = "1.0.0"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 # Enable shader hot reload for native compilation.
@@ -39,15 +40,16 @@ notify = "6.1.1"
 # Embed shaders in wasm even in debug mode.
 rust-embed = { version = "8.2.0", features = ["debug-embed"] }
 wasm-bindgen-futures = "0.4.39"
-web-sys = "=0.3.64" # should be fixed once wgpu 0.18.x is released
+web-sys = "0.3.67"
 console_error_panic_hook = "0.1.7"
 console_log = "1.0.0"
 wasm-bindgen = "0.2.89"
 
 [features]
+# wgpu::DownlevelFlags::VERTEX_STORAGE is not supported on WebGL
 webgl = ["wgpu/webgl"]
-wgsl = ["wgpu/wgsl"]
-default = ["webgl"] # Let's try to keep webgl backend possible.
+webgpu = ["wgpu/webgpu"]
+default = ["webgpu"]
 
 [lints]
 workspace = true
