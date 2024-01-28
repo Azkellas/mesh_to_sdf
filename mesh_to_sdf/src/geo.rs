@@ -1,26 +1,34 @@
 use crate::point::Point;
 
-pub fn point_triangle_signed_distance<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) -> f32 {
-    let mut distance = point_triangle_distance(x0, x1, x2, x3);
+/// Compute the signed distance between a point and a triangle.
+/// Sign is positive if the point is outside the mesh, negative if inside.
+/// Assume all normals are pointing outside the mesh.
+/// Sign is computed by checking if the point is on the same side of the triangle as the normal.
+pub(crate) fn point_triangle_signed_distance<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) -> f32 {
+    // Compute the unsigned distance from the point to the plane of the triangle
+    let distance = point_triangle_distance(x0, x1, x2, x3);
 
-    // signed distance: positive if the point is outside the mesh, negative if inside.
-    // assume all normals are pointing outside the mesh.
+    // Compute the direction to the barycenter of the triangle.
+    // TODO: since point_triangle_distance project the point on the triangle, we could use that
+    // to do the sign computation in the same pass.
     let barycenter = triangle_barycenter(x1, x2, x3);
     let direction = x0.sub(&barycenter);
-    // No need for it to be normalized.
     let normal = triangle_normal(x1, x2, x3);
-    if direction.dot(&normal) < 0.0 {
-        distance = -distance;
-    }
 
-    distance
+    if direction.dot(&normal) > 0.0 {
+        distance
+    } else {
+        -distance
+    }
 }
 
+/// Return the barycenter of a triangle.
 fn triangle_barycenter<V: Point>(a: &V, b: &V, c: &V) -> V {
     (a.add(b).add(c)).mul(1.0 / 3.0)
 }
 
-/// Note: the normal is NOT normalized.
+/// Return the normal, which is NOT normalized.
+/// TODO: this might be better with the mesh normals if we add them to the api.
 fn triangle_normal<V: Point>(a: &V, b: &V, c: &V) -> V {
     let ab = b.sub(a);
     let ac = c.sub(a);
@@ -31,8 +39,9 @@ fn triangle_normal<V: Point>(a: &V, b: &V, c: &V) -> V {
     )
 }
 
+/// Find the distance x0 is from triangle x1-x2-x3.
 /// Note: this is adapted from https://github.com/christopherbatty/SDFGen
-// find distance x0 is from triangle x1-x2-x3
+/// TODO: we could probably find a better implementation.
 fn point_triangle_distance<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) -> f32 {
     // first find barycentric coordinates of closest point on infinite plane
     let x03 = x0.sub(x3);
@@ -85,7 +94,7 @@ fn point_triangle_distance<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) -> f32 {
     }
 }
 
-// find distance x0 is from segment x1-x2
+/// Find the distance x0 is from segment x1-x2.
 pub fn point_segment_distance<V: Point>(x0: &V, x1: &V, x2: &V) -> f32 {
     let dx = x2.sub(x1);
     let m2 = dx.dot(&dx);
@@ -98,6 +107,7 @@ pub fn point_segment_distance<V: Point>(x0: &V, x1: &V, x2: &V) -> f32 {
     x0.dist(&x1.mul(s12).add(&x2.mul(1.0 - s12)))
 }
 
+/// Compute the bounding box of a triangle.
 pub fn triangle_bounding_box<V: Point>(a: &V, b: &V, c: &V) -> (V, V) {
     let min = V::new(
         f32::min(a.x(), f32::min(b.x(), c.x())),

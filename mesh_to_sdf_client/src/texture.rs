@@ -1,4 +1,4 @@
-use crate::mip_generation;
+use crate::utility::mip_generation;
 
 #[derive(Debug)]
 pub struct Texture {

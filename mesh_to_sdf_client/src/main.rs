@@ -2,7 +2,6 @@ mod camera;
 mod camera_control;
 mod frame_rate;
 mod gltf;
-mod mip_generation;
 mod reload_flags;
 mod runner;
 mod sdf;

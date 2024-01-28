@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::utility::mip_generation_pass::MipGenerationPass;
+use super::mip_generation_pass::MipGenerationPass;
 
 pub fn generate_mipmaps(
     device: &wgpu::Device,

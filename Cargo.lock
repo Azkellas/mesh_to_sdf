@@ -1655,6 +1655,7 @@ dependencies = [
  "easy-gltf",
  "float-cmp",
  "itertools 0.12.0",
+ "log",
  "ordered-float",
  "rayon",
 ]
