@@ -17,7 +17,7 @@ wgpu = { version = "0.19.1", default-features = false }
 winit_input_helper = "0.15.3"
 bytemuck = { version = "1.14.0", features = ["derive"] }
 web-time = "1.0.0"
-itertools = "0.12.0"
+itertools = "0.12.1"
 anyhow = "1.0.79"
 winit = "0.29.10"
 glam = { version = "0.25.0", default-features = true, features = ["bytemuck", "mint"] }
