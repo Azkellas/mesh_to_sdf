@@ -82,7 +82,7 @@ impl EventLoopWrapper {
 ///
 /// As surface usage varies per platform, wrapping this up cleans up the event loop code.
 struct SurfaceWrapper {
-    surface: Option<wgpu::Surface<'static>>,
+    surface: Option<wgpu::Surface>,
     config: Option<wgpu::SurfaceConfiguration>,
 }
 
@@ -104,7 +104,9 @@ impl SurfaceWrapper {
     /// us to wait until we recieve the `Resumed` event to do so.
     fn pre_adapter(&mut self, instance: &wgpu::Instance, window: Arc<Window>) {
         if cfg!(target_arch = "wasm32") {
-            self.surface = Some(instance.create_surface(window).unwrap());
+            unsafe {
+                self.surface = Some(instance.create_surface(&window).unwrap());
+            }
         }
     }
 
@@ -128,7 +130,9 @@ impl SurfaceWrapper {
 
         // We didn't create the surface in pre_adapter, so we need to do so now.
         if !cfg!(target_arch = "wasm32") {
-            self.surface = Some(context.instance.create_surface(window).unwrap());
+            unsafe {
+                self.surface = Some(context.instance.create_surface(&window).unwrap());
+            }
         }
 
         // From here on, self.surface should be Some.
@@ -218,7 +222,7 @@ impl ExampleContext {
     async fn init_async(surface: &mut SurfaceWrapper, window: Arc<Window>) -> Self {
         log::info!("Initializing wgpu...");
 
-        let backends = wgpu::util::backend_bits_from_env().unwrap_or_default();
+        let backends = wgpu::util::backend_bits_from_env().unwrap_or(wgpu::Backends::all());
         let dx12_shader_compiler = wgpu::util::dx12_shader_compiler_from_env().unwrap_or_default();
         let gles_minor_version = wgpu::util::gles_minor_version_from_env().unwrap_or_default();
 
@@ -270,8 +274,8 @@ impl ExampleContext {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    required_features: (optional_features & adapter_features) | required_features,
-                    required_limits: needed_limits,
+                    features: (optional_features & adapter_features) | required_features,
+                    limits: needed_limits,
                 },
                 trace_dir.ok().as_ref().map(std::path::Path::new),
             )
