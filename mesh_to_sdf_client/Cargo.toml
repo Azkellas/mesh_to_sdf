@@ -30,6 +30,7 @@ log = "0.4.20"
 env_logger = "0.11.1"
 rfd = {version = "0.13.0", default-features = true, features = ["file-handle-inner"] }
 cfg-if = "1.0.0"
+float-cmp = "0.9.0"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 # Enable shader hot reload for native compilation.

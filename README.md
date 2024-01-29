@@ -104,5 +104,5 @@ This project is still in its early stages. Here is a list of things that are pla
 - [ ] [client] Display meshes
 - [ ] [client] Raymarch the surface
 - [ ] [client] Voxelize the mesh
-- [ ] [client] Undo/Redo
+- [x] [client] Undo/Redo
 - [ ] [client] CLI

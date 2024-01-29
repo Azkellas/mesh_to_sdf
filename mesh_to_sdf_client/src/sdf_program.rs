@@ -18,6 +18,9 @@ use crate::sdf_render_pass::SdfRenderPass;
 
 use crate::camera_control::CameraLookAt;
 
+mod command_stack;
+mod ui;
+
 struct ModelInfo {
     pub vertex_count: usize,
     pub index_count: usize,
@@ -31,6 +34,7 @@ struct LastRunInfo {
     pub size: [u32; 3],
 }
 
+#[derive(Debug, Clone)]
 struct Parameters {
     file_name: Option<String>,
     gizmo_mode: GizmoMode,
@@ -38,7 +42,7 @@ struct Parameters {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct Settings {
     // TODO: remove padding?
     positive_color: [f32; 3],
@@ -117,7 +121,7 @@ pub struct SdfProgram {
     sdf: Option<Sdf>,
     model_info: Option<ModelInfo>,
     last_run_info: Option<LastRunInfo>,
-
+    command_stack: command_stack::CommandStack,
     alert_message: Option<(String, web_time::Instant)>,
 }
 
@@ -144,9 +148,25 @@ impl SdfProgram {
     }
 
     #[allow(clippy::unused_self)]
-    pub fn process_input(&mut self, _input: &WinitInputHelper) -> bool {
-        // nothing to do here for now.
-        false
+    pub fn process_input(&mut self, input: &WinitInputHelper) -> bool {
+        let mut captured = false;
+
+        if input.held_control() && input.key_released(winit::keyboard::KeyCode::KeyZ) {
+            if let Some(command) = self.command_stack.undo() {
+                self.parameters = command.old_state.parameters;
+                self.settings.settings = command.old_state.settings;
+            }
+            captured = true;
+        }
+        if input.held_control() && input.key_released(winit::keyboard::KeyCode::KeyY) {
+            if let Some(command) = self.command_stack.redo() {
+                self.parameters = command.new_state.parameters;
+                self.settings.settings = command.new_state.settings;
+            }
+            captured = true;
+        }
+
+        captured
     }
 
     /// Get program name.
@@ -212,6 +232,7 @@ impl SdfProgram {
             sdf: None,
             model_info: None,
             last_run_info: None,
+            command_stack: command_stack::CommandStack::new(20),
             alert_message: None,
         })
     }
@@ -374,89 +395,148 @@ impl SdfProgram {
 
             ui.end_row();
 
-            ui.label("Positive Color");
-            egui::color_picker::color_edit_button_rgb(
-                ui,
-                &mut self.settings.settings.positive_color,
-            );
+            for label in ["Positive Color", "Negative Color", "Surface Color"] {
+                let color = match label {
+                    "Positive Color" => self.settings.settings.positive_color,
+                    "Negative Color" => self.settings.settings.negative_color,
+                    "Surface Color" => self.settings.settings.surface_color,
+                    _ => continue,
+                };
 
-            ui.end_row();
+                if let Some(new_color) = Self::add_color_widget(ui, label, color) {
+                    // Save old state.
+                    let old_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
 
-            ui.label("Negative Color");
-            egui::color_picker::color_edit_button_rgb(
-                ui,
-                &mut self.settings.settings.negative_color,
-            );
+                    println!("diffenrence: {} {:?} {:?}", label, color, new_color);
 
-            ui.end_row();
+                    match label {
+                        "Positive Color" => self.settings.settings.positive_color = new_color,
+                        "Negative Color" => self.settings.settings.negative_color = new_color,
+                        "Surface Color" => self.settings.settings.surface_color = new_color,
+                        _ => continue,
+                    };
 
-            ui.label("Surface Color");
-            egui::color_picker::color_edit_button_rgb(
-                ui,
-                &mut self.settings.settings.surface_color,
-            );
+                    // Get new state.
+                    let new_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
 
-            ui.end_row();
+                    // Push with the old and new state.
+                    self.command_stack.push(
+                        label,
+                        command_stack::Command {
+                            old_state,
+                            new_state,
+                        },
+                    );
+                }
+                ui.end_row();
+            }
 
-            ui.label("Positive power");
-            ui.add(egui::Slider::new(
-                &mut self.settings.settings.positives_power,
-                0.0..=10.0,
-            ));
+            for (label, range) in [
+                ("Positive power", 0.0..=10.0),
+                ("Negative power", 0.0..=10.0),
+                ("Surface power", 0.0..=10.0),
+                ("Surface width", 0.001..=0.1),
+                ("Point size", 0.1..=1.),
+            ] {
+                let value = match label {
+                    "Positive power" => self.settings.settings.positives_power,
+                    "Negative power" => self.settings.settings.negatives_power,
+                    "Surface power" => self.settings.settings.surface_power,
+                    "Surface width" => self.settings.settings.surface_width,
+                    "Point size" => self.settings.settings.point_size,
+                    _ => continue,
+                };
 
-            ui.end_row();
+                let mut new_value = value;
+                ui.label(label);
+                ui.add(egui::Slider::new(&mut new_value, range));
 
-            ui.label("Negative power");
-            ui.add(egui::Slider::new(
-                &mut self.settings.settings.negatives_power,
-                0.0..=10.0,
-            ));
+                if !float_cmp::approx_eq!(f32, new_value, value, ulps = 2, epsilon = 1e-6) {
+                    // Save old state.
+                    let old_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
 
-            ui.end_row();
+                    match label {
+                        "Positive power" => self.settings.settings.positives_power = new_value,
+                        "Negative power" => self.settings.settings.negatives_power = new_value,
+                        "Surface power" => self.settings.settings.surface_power = new_value,
+                        "Surface width" => self.settings.settings.surface_width = new_value,
+                        "Point size" => self.settings.settings.point_size = new_value,
+                        _ => continue,
+                    };
 
-            ui.label("Surface power");
-            ui.add(egui::Slider::new(
-                &mut self.settings.settings.surface_power,
-                0.0..=10.0,
-            ));
+                    // Get new state.
+                    let new_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
 
-            ui.end_row();
-
-            ui.label("Surface width");
-            ui.add(egui::Slider::new(
-                &mut self.settings.settings.surface_width,
-                0.001..=0.1,
-            ));
-
-            ui.end_row();
-
-            ui.label("Point size");
-            ui.add(egui::Slider::new(
-                &mut self.settings.settings.point_size,
-                0.1..=1.,
-            ));
-            ui.end_row();
+                    // Push with the old and new state.
+                    self.command_stack.push(
+                        label,
+                        command_stack::Command {
+                            old_state,
+                            new_state,
+                        },
+                    );
+                }
+                ui.end_row();
+            }
 
             ui.separator();
             ui.end_row();
 
             ui.label("Cell count");
             ui.horizontal(|ui| {
+                let mut new_value = self.parameters.cell_count;
                 ui.add(
-                    egui::DragValue::new(&mut self.parameters.cell_count[0])
+                    egui::DragValue::new(&mut new_value[0])
                         .clamp_range(2..=100)
                         .prefix("x: "),
                 );
                 ui.add(
-                    egui::DragValue::new(&mut self.parameters.cell_count[1])
+                    egui::DragValue::new(&mut new_value[1])
                         .clamp_range(2..=100)
                         .prefix("y: "),
                 );
                 ui.add(
-                    egui::DragValue::new(&mut self.parameters.cell_count[2])
+                    egui::DragValue::new(&mut new_value[2])
                         .clamp_range(2..=100)
                         .prefix("z: "),
                 );
+
+                if new_value != self.parameters.cell_count {
+                    // Save old state.
+                    let old_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
+
+                    self.parameters.cell_count = new_value;
+
+                    // Get new state.
+                    let new_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
+
+                    // Push with the old and new state.
+                    self.command_stack.push(
+                        "Cell size",
+                        command_stack::Command {
+                            old_state,
+                            new_state,
+                        },
+                    );
+                }
             });
             ui.end_row();
 
@@ -478,33 +558,63 @@ impl SdfProgram {
                     (0.0, 1.0)
                 };
 
-                // TODO: depends on the bounding box of the sdf.
-                let mut size_x = (x_max - x_min) / self.parameters.cell_count[0] as f32;
+                let size_x = (x_max - x_min) / self.parameters.cell_count[0] as f32;
+                let size_y = (y_max - y_min) / self.parameters.cell_count[1] as f32;
+                let size_z = (z_max - z_min) / self.parameters.cell_count[2] as f32;
+
+                let value = [size_x, size_y, size_z];
+                let mut new_value = value;
+
                 ui.add(
-                    egui::DragValue::new(&mut size_x)
+                    egui::DragValue::new(&mut new_value[0])
                         .prefix("x: ")
                         .speed(0.001)
                         .max_decimals(3),
                 );
-                self.parameters.cell_count[0] = ((x_max - x_min) / size_x) as u32;
 
-                let mut size_y = (y_max - y_min) / self.parameters.cell_count[1] as f32;
                 ui.add(
-                    egui::DragValue::new(&mut size_y)
+                    egui::DragValue::new(&mut new_value[1])
                         .prefix("y: ")
                         .speed(0.001)
                         .max_decimals(3),
                 );
-                self.parameters.cell_count[1] = ((y_max - y_min) / size_y) as u32;
 
-                let mut size_z = (z_max - z_min) / self.parameters.cell_count[2] as f32;
                 ui.add(
-                    egui::DragValue::new(&mut size_z)
+                    egui::DragValue::new(&mut new_value[2])
                         .prefix("z: ")
                         .speed(0.001)
                         .max_decimals(3),
                 );
-                self.parameters.cell_count[2] = ((z_max - z_min) / size_z) as u32;
+
+                if !float_cmp::approx_eq!(f32, value[0], new_value[0], ulps = 2, epsilon = 1e-6)
+                    || !float_cmp::approx_eq!(f32, value[1], new_value[1], ulps = 2, epsilon = 1e-6)
+                    || !float_cmp::approx_eq!(f32, value[2], new_value[2], ulps = 2, epsilon = 1e-6)
+                {
+                    // Save old state.
+                    let old_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
+
+                    self.parameters.cell_count[0] = ((x_max - x_min) / new_value[0]) as u32;
+                    self.parameters.cell_count[1] = ((y_max - y_min) / new_value[1]) as u32;
+                    self.parameters.cell_count[2] = ((z_max - z_min) / new_value[2]) as u32;
+
+                    // Get new state.
+                    let new_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
+
+                    // Push with the old and new state.
+                    self.command_stack.push(
+                        "Cell size",
+                        command_stack::Command {
+                            old_state,
+                            new_state,
+                        },
+                    );
+                }
             });
             ui.end_row();
 
@@ -654,6 +764,7 @@ impl SdfProgram {
     }
 
     fn load_gltf(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Result<()> {
+        // TODO: we don't need to load the gltf file each time we generate the sdf.
         match self.parameters.file_name {
             None => anyhow::bail!("No file to load"),
             Some(ref path) => {

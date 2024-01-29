@@ -468,7 +468,6 @@ async fn run(
                     // }
 
                     egui_context.begin_frame(input);
-
                     egui::panel::SidePanel::new(
                         egui::panel::Side::Left,
                         egui::Id::new("control_panel"),

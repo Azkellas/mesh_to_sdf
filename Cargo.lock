@@ -1675,6 +1675,7 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "env_logger",
+ "float-cmp",
  "glam 0.25.0",
  "image",
  "itertools 0.12.0",

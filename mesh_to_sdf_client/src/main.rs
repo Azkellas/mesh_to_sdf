@@ -1,3 +1,5 @@
+//! Client application for the `mesh_to_sdf` project.
+
 mod camera;
 mod camera_control;
 mod frame_rate;
