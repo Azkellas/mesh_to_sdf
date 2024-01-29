@@ -8,8 +8,12 @@ license = "MIT OR Apache-2.0"
 version = "0.1.0"
 
 
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+
 [workspace.lints]
-rust = { dead_code = "allow" }
+rust = { dead_code = "allow", missing_docs = "warn" }
 
 [workspace.lints.clippy]
 all = "warn"

@@ -24,3 +24,7 @@ criterion = { version = "0.5.1", features = ["html_reports"] }
 [[bench]]
 name = "generate_sdf"
 harness = false
+
+[[bench]]
+name = "generate_grid_sdf"
+harness = false
