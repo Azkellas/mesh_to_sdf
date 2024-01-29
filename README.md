@@ -61,14 +61,12 @@ To use your favorite math library with `mesh_to_sdf`, you need to add it to `mes
 mesh_to_sdf = { version = "0.1", default-features = false features = ["glam"] }
 ```
 
-Alternatively, you can add `mint` to your math library dependencies and use the `mint` feature of `mesh_to_sdf`, which is enabled by default:
-```toml
-[dependencies]
-glam = { version = "0.25.0", features = ["mint"] }
-mesh_to_sdf = 0.1.0
-````
-
-The first solution is recommended as it will be faster and more efficient.
+Currently, the following libraries are supported:
+- **cgmath** (`cgmath::Vector3<f32>`)
+- **glam** (`glam::Vec3`)
+- **mint** (`mint::Vector3<f32>` and `mint::Point3<f32>`)
+- **nalgebra** (`nalgebra::Vector3<f32>` and `nalgebra::Point3<f32>`)
+- and `[f32; 3]`
 
 #### Determining inside/outside
 
@@ -94,7 +92,7 @@ Credits:
 
 This project is still in its early stages. Here is a list of things that are planned for (near) the future:
 - [ ] [lib] Robust inside/outside checking with raycast
-- [ ] [lib] Implement `Point` for common libraries (`cgmath`, `nalgebra`, `mint`, `ndarray`, ...)
+- [x] [lib] Implement `Point` for common libraries (`cgmath`, `nalgebra`, `mint`, ...)
 - [ ] [lib] Optimize `mesh_to_sdf` with a bvh
 - [ ] [lib] Optimize `mesh_to_sdf` by computing on the gpu
 - [ ] [lib] Load/Save vf files

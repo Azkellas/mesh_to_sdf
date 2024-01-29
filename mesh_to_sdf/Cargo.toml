@@ -17,9 +17,21 @@ log = "0.4.20"
 ordered-float = "4.2.0"
 rayon = "1.8.1"
 
+glam = { version = "0.25.0", optional = true }
+mint = { version = "0.5.9", optional = true }
+nalgebra = { version = "0.32.3", optional = true }
+cgmath = { version = "0.18.0", optional = true }
+
+[features]
+glam = ["dep:glam"]
+mint = ["dep:mint"]
+nalgebra = ["dep:nalgebra"]
+cgmath = ["dep:cgmath"]
+
 [dev-dependencies]
 easy-gltf = "1.1.1"
 criterion = { version = "0.5.1", features = ["html_reports"] }
+proptest = "1.4.0"
 
 [[bench]]
 name = "generate_sdf"

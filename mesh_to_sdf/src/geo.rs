@@ -40,7 +40,7 @@ fn triangle_normal<V: Point>(a: &V, b: &V, c: &V) -> V {
 }
 
 /// Find the distance x0 is from triangle x1-x2-x3.
-/// Note: this is adapted from https://github.com/christopherbatty/SDFGen
+/// Note: this is adapted from <https://github.com/christopherbatty/SDFGen>
 /// TODO: we could probably find a better implementation.
 fn point_triangle_distance<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) -> f32 {
     // first find barycentric coordinates of closest point on infinite plane

@@ -4,8 +4,8 @@
 //!
 //! This crate provides two entry points:
 //!
-//! - [generate_sdf]: computes the signed distance field for the mesh defined by `vertices` and `indices` at the points `query_points`.
-//! - [generate_grid_sdf]: computes the signed distance field for the mesh defined by `vertices` and `indices` on a grid with `cell_count` cells of size `cell_radius` starting at `start_pos`.
+//! - [`generate_sdf`]: computes the signed distance field for the mesh defined by `vertices` and `indices` at the points `query_points`.
+//! - [`generate_grid_sdf`]: computes the signed distance field for the mesh defined by `vertices` and `indices` on a grid with `cell_count` cells of size `cell_radius` starting at `start_pos`.
 //!
 //! ```
 //! # use mesh_to_sdf::{generate_sdf, generate_grid_sdf, Topology};
@@ -60,14 +60,12 @@
 //! mesh_to_sdf = { version = "0.1", default-features = false features = ["glam"] }
 //! ```
 //!
-//! Alternatively, you can add `mint` to your math library dependencies and use the `mint` feature of `mesh_to_sdf`, which is enabled by default:
-//! ```toml
-//! [dependencies]
-//! glam = { version = "0.25.0", features = ["mint"] }
-//! mesh_to_sdf = 0.1.0
-//! ````
-//!
-//! The first solution is recommended as it will be faster and more efficient.
+//! Currently, the following libraries are supported:
+//! - `cgmath` (`cgmath::Vector3<f32>`)
+//! - `glam` (`glam::Vec3`)
+//! - `mint` (`mint::Vector3<f32>` and `mint::Point3<f32>`)
+//! - `nalgebra` (`nalgebra::Vector3<f32>` and `nalgebra::Point3<f32>`)
+//! - and `[f32; 3]`
 //!
 //! #### Determining inside/outside
 //!
@@ -75,7 +73,7 @@
 //!
 //! #### Benchmarks
 //!
-//! [generate_grid_sdf] is much faster than [generate_sdf] and should be used whenever possible. [generate_sdf] does not allocate memory (except for the result array) but is slow. A faster implementation is planned for the future.
+//! [`generate_grid_sdf`] is much faster than [`generate_sdf`] and should be used whenever possible. [`generate_sdf`] does not allocate memory (except for the result array) but is slow. A faster implementation is planned for the future.
 use std::boxed::Box;
 
 use itertools::Itertools;
