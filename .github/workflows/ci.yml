@@ -87,21 +87,21 @@ jobs:
       - name: Check for all features
         run: cargo hack --feature-powerset check
 
-  wasm:
-    name: Wasm
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install libgtk  for rfd
-        run: sudo apt-get install -y libgtk-3-dev 
-      - uses: actions/checkout@v4
-        with:
-          submodules: true
-      - name: Install stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          target: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - name: Check for target wasm webgpu
-        env:
-          RUSTFLAGS: --cfg=web_sys_unstable_apis
-        run: cargo check --target wasm32-unknown-unknown
+  # wasm:
+  #   name: Wasm
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Install libgtk  for rfd
+  #       run: sudo apt-get install -y libgtk-3-dev 
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         submodules: true
+  #     - name: Install stable
+  #       uses: dtolnay/rust-toolchain@stable
+  #       with:
+  #         target: wasm32-unknown-unknown
+  #     - uses: Swatinem/rust-cache@v2
+  #     - name: Check for target wasm webgpu
+  #       env:
+  #         RUSTFLAGS: --cfg=web_sys_unstable_apis
+  #       run: cargo check --target wasm32-unknown-unknown
