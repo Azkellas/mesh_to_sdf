@@ -76,10 +76,9 @@ impl Model {
 
         let index_count = indices.len() as u32;
 
-        // If no albedo is present, render as white.
-        let mut white_albedo: image::ImageBuffer<image::Rgba<u8>, std::vec::Vec<u8>> =
-            image::ImageBuffer::new(2, 2);
-        white_albedo.iter_mut().for_each(|x| *x = 255);
+        // If no albedo is present, render as grey.
+        let grey_albedo: image::ImageBuffer<image::Rgba<u8>, std::vec::Vec<u8>> =
+            image::ImageBuffer::from_pixel(2, 2, image::Rgba([128, 128, 128, 255]));
 
         let albedo = Texture::from_image(
             device,
@@ -89,7 +88,7 @@ impl Model {
                 .pbr
                 .base_color_texture
                 .as_ref()
-                .map_or(&white_albedo, |x| x.as_ref()),
+                .map_or(&grey_albedo, |x| x.as_ref()),
             Some("albedo"),
         );
 

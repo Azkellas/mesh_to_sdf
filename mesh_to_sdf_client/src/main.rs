@@ -1,6 +1,6 @@
 //! Client application for the `mesh_to_sdf` project.
 //!
-//! ![example](https://github.com/Azkellas/mesh_to_sdf/blob/main/demo.gif)
+//! ![example](https://raw.githubusercontent.com/Azkellas/mesh_to_sdf/main/client.gif)
 //!
 //! A visualization client for the SDF of a mesh.
 //! Generates a SDF from a mesh and renders it.
