@@ -2,7 +2,7 @@ use wgpu::util::DeviceExt;
 
 use anyhow::Result;
 
-use crate::sdf_render_pass::SdfRenderPass;
+use crate::passes::sdf_render_pass::SdfRenderPass;
 
 #[repr(C)]
 #[derive(Default, Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]

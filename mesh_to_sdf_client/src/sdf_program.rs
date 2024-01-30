@@ -14,7 +14,6 @@ use crate::gltf;
 use crate::texture::{self, Texture};
 
 use crate::sdf::Sdf;
-use crate::sdf_render_pass::SdfRenderPass;
 
 use crate::camera_control::CameraLookAt;
 
@@ -34,11 +33,20 @@ struct LastRunInfo {
     pub size: [u32; 3],
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum RenderMode {
+    Model,
+    Sdf,
+    ModelAndSdf,
+}
+
 #[derive(Debug, Clone)]
 struct Parameters {
     file_name: Option<String>,
     gizmo_mode: GizmoMode,
     cell_count: [u32; 3],
+    render_mode: RenderMode,
+    enable_shadows: bool,
 }
 
 #[repr(C)]
@@ -107,7 +115,10 @@ impl SettingsData {
 }
 
 struct Passes {
-    sdf: SdfRenderPass,
+    sdf: crate::passes::sdf_render_pass::SdfRenderPass,
+    mip_gen: crate::passes::mip_generation_pass::MipGenerationPass,
+    model: crate::passes::model_render_pass::ModelRenderPass,
+    shadow: crate::passes::shadow_pass::ShadowPass,
 }
 
 pub struct SdfProgram {
@@ -119,6 +130,7 @@ pub struct SdfProgram {
     camera: CameraData,
     depth_map: Texture,
     sdf: Option<Sdf>,
+    models: Vec<crate::pbr::model::Model>,
     model_info: Option<ModelInfo>,
     last_run_info: Option<LastRunInfo>,
     command_stack: command_stack::CommandStack,
@@ -144,7 +156,7 @@ impl SdfProgram {
     }
 
     pub fn required_features() -> wgpu::Features {
-        wgpu::Features::empty()
+        wgpu::Features::CLEAR_TEXTURE
     }
 
     #[allow(clippy::unused_self)]
@@ -206,19 +218,39 @@ impl SdfProgram {
             },
         );
 
-        let sdf_pass = SdfRenderPass::new(
+        let sdf_pass = crate::passes::sdf_render_pass::SdfRenderPass::new(
             device,
             swapchain_format,
             &camera,
             &settings.bind_group_layout,
         )?;
 
-        let pass = Passes { sdf: sdf_pass };
+        let mip_gen_pass = crate::passes::mip_generation_pass::MipGenerationPass::new(device)?;
+
+        let shadow_map = crate::pbr::shadow_map::ShadowMap::new(device);
+
+        let shadow_pass = crate::passes::shadow_pass::ShadowPass::new(device, shadow_map)?;
+
+        let model_render_pass = crate::passes::model_render_pass::ModelRenderPass::new(
+            device,
+            swapchain_format,
+            &camera,
+            &shadow_pass.map,
+        )?;
+
+        let pass = Passes {
+            sdf: sdf_pass,
+            mip_gen: mip_gen_pass,
+            model: model_render_pass,
+            shadow: shadow_pass,
+        };
 
         let parameters = Parameters {
             file_name: None,
             gizmo_mode: GizmoMode::Translate,
             cell_count: [16, 16, 16],
+            render_mode: RenderMode::Sdf,
+            enable_shadows: false, // deactivating shadows for now.
         };
 
         Ok(SdfProgram {
@@ -230,6 +262,7 @@ impl SdfProgram {
             depth_map,
             parameters,
             sdf: None,
+            models: vec![],
             model_info: None,
             last_run_info: None,
             command_stack: command_stack::CommandStack::new(20),
@@ -244,14 +277,15 @@ impl SdfProgram {
         device: &wgpu::Device,
         adapter: &wgpu::Adapter,
     ) -> Result<()> {
-        // self.passes.render_model.update_pipeline(
-        //     device,
-        //     &self.camera,
-        //     &self.passes.hdri.bind_group_layout,
-        // )?;
-
         let swapchain_capabilities = surface.get_capabilities(adapter);
         let swapchain_format = swapchain_capabilities.formats[0];
+
+        self.pass.mip_gen.update_pipeline(device)?;
+        self.pass.shadow.update_pipeline(device)?;
+
+        self.pass
+            .model
+            .update_pipeline(device, swapchain_format, &self.camera)?;
 
         self.pass.sdf.update_pipeline(
             device,
@@ -295,6 +329,17 @@ impl SdfProgram {
         let camera = &mut self.camera;
         camera.uniform.update_view_proj(&camera.camera);
         queue.write_buffer(&camera.buffer, 0, bytemuck::cast_slice(&[camera.uniform]));
+
+        let shadow_map = &mut self.pass.shadow.map;
+        shadow_map
+            .light
+            .uniform
+            .update_view_proj(&shadow_map.light.camera);
+        queue.write_buffer(
+            &shadow_map.light.buffer,
+            0,
+            bytemuck::cast_slice(&[shadow_map.light.uniform]),
+        );
     }
 
     /// Draw ui with egui.
@@ -306,6 +351,27 @@ impl SdfProgram {
     /// Draw ui with egui.
     pub fn draw_ui(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, ui: &mut egui::Ui) {
         egui::Grid::new("settings").show(ui, |ui| {
+            ui.separator();
+            ui.end_row();
+
+            ui.label("Render Mode");
+            egui::ComboBox::from_label("")
+                .selected_text(format!("{:?}", self.parameters.render_mode))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.parameters.render_mode,
+                        RenderMode::Model,
+                        "Model",
+                    );
+                    ui.selectable_value(&mut self.parameters.render_mode, RenderMode::Sdf, "SDF");
+                    ui.selectable_value(
+                        &mut self.parameters.render_mode,
+                        RenderMode::ModelAndSdf,
+                        "Model and SDF",
+                    );
+                });
+            ui.end_row();
+
             ui.separator();
             ui.end_row();
 
@@ -621,6 +687,38 @@ impl SdfProgram {
             ui.separator();
             ui.end_row();
 
+            if self.parameters.enable_shadows {
+                ui.label("Light");
+                ui.end_row();
+                ui.add(
+                    egui::Slider::new(
+                        &mut self.pass.shadow.map.light.camera.look_at.distance,
+                        0.0..=30.0,
+                    )
+                    .text("Distance"),
+                );
+                ui.end_row();
+                ui.add(
+                    egui::Slider::new(
+                        &mut self.pass.shadow.map.light.camera.look_at.longitude,
+                        0.0..=std::f32::consts::TAU,
+                    )
+                    .text("Longitude"),
+                );
+                ui.end_row();
+                ui.add(
+                    egui::Slider::new(
+                        &mut self.pass.shadow.map.light.camera.look_at.latitude,
+                        -std::f32::consts::FRAC_PI_2..=std::f32::consts::FRAC_PI_2,
+                    )
+                    .text("Latitude"),
+                );
+                ui.end_row();
+
+                ui.separator();
+                ui.end_row();
+            }
+
             if ui.button("Generate").clicked() {
                 let _ = self.load_gltf(device, queue); // TODO: don't ignore error.
             }
@@ -658,33 +756,70 @@ impl SdfProgram {
     }
 
     pub fn render(&mut self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue) {
+        // Clear textures.
+        {
+            let mut command_encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+            // clear depth and render target
+            command_encoder.clear_texture(
+                &self.depth_map.texture,
+                &wgpu::ImageSubresourceRange::default(),
+            );
+
+            command_encoder.clear_texture(
+                &self.pass.shadow.map.texture.texture,
+                &wgpu::ImageSubresourceRange::default(),
+            );
+
+            queue.submit(Some(command_encoder.finish()));
+        }
+
+        // shadow pass
+        if self.parameters.enable_shadows {
+            let mut command_encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+            command_encoder.push_debug_group("render models shadow");
+            {
+                for model in &self.models {
+                    self.pass.shadow.run(&mut command_encoder, model);
+                }
+            }
+            command_encoder.pop_debug_group();
+
+            queue.submit(Some(command_encoder.finish()));
+        }
+
         // render models
-        // {
-        //     let mut command_encoder =
-        //         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        if self.parameters.render_mode == RenderMode::Model
+            || self.parameters.render_mode == RenderMode::ModelAndSdf
+        {
+            let mut command_encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        //     // need to draw it each frame to update depth map.
-        //     command_encoder.push_debug_group("render models");
-        //     {
-        //         for model in &self.models {
-        //             self.passes.render_model.run(
-        //                 &mut command_encoder,
-        //                 &self.render_target,
-        //                 &self.depth_map,
-        //                 &self.camera,
-        //                 &self.passes.draw_shadow_map.bind_group,
-        //                 &self.passes.hdri.bind_group,
-        //                 model,
-        //             );
-        //         }
-        //     }
-        //     command_encoder.pop_debug_group();
+            command_encoder.push_debug_group("render models");
+            {
+                for model in &self.models {
+                    self.pass.model.run(
+                        &mut command_encoder,
+                        view,
+                        &self.depth_map,
+                        &self.camera,
+                        model,
+                    );
+                }
+            }
+            command_encoder.pop_debug_group();
 
-        //     queue.submit(Some(command_encoder.finish()));
-        // }
+            queue.submit(Some(command_encoder.finish()));
+        }
 
         // render sdf
-        if self.sdf.is_some() {
+        if self.sdf.is_some()
+            && (self.parameters.render_mode == RenderMode::Sdf
+                || self.parameters.render_mode == RenderMode::ModelAndSdf)
+        {
             let mut command_encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
@@ -772,24 +907,18 @@ impl SdfProgram {
 
                 // a gltf scene can contain multiple models.
                 // we merge them in a single sdf.
-                let models = gltf::load_scene(device, queue, path)?;
+                self.models = gltf::load_scene(device, queue, path)?;
 
-                let (vertices, indices) =
-                    models
-                        .iter()
-                        .fold((vec![], vec![]), |(mut vertices, mut indices), model| {
-                            // we need to offset the indices by the number of vertices we already have.
-                            let len = vertices.len();
-                            vertices.extend(
-                                model
-                                    .vertices()
-                                    .iter()
-                                    .map(|v| [v.position.x, v.position.y, v.position.z]),
-                            );
-                            indices
-                                .extend(model.indices().unwrap().iter().map(|i| *i + len as u32));
-                            (vertices, indices)
-                        });
+                let (vertices, indices) = self.models.iter().fold(
+                    (vec![], vec![]),
+                    |(mut vertices, mut indices), model| {
+                        // we need to offset the indices by the number of vertices we already have.
+                        let len = vertices.len();
+                        vertices.extend(model.vertices.iter().map(|v| v.position));
+                        indices.extend(model.indices.iter().map(|i| *i + len as u32));
+                        (vertices, indices)
+                    },
+                );
 
                 // TODO: c/c'd from sdf.rs
                 let MinMaxResult::MinMax(xmin, xmax) = vertices.iter().map(|v| v[0]).minmax()

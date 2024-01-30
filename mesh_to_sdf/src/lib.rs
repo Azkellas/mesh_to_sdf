@@ -363,7 +363,7 @@ where
 
                         grid[cell_idx] = distance;
                         let state = State {
-                            distance: NotNan::new(distance.abs()).unwrap(), // TODO: handle error
+                            distance: NotNan::new(distance).unwrap(), // TODO: handle error
                             triangle,
                             cell,
                         };
@@ -429,7 +429,7 @@ where
 
                         grid[neighbour_cell_idx] = distance;
                         let state = State {
-                            distance: NotNan::new(distance.abs()).unwrap(), // TODO: handle error
+                            distance: NotNan::new(distance).unwrap(), // TODO: handle error
                             triangle,
                             cell: neighbour_cell,
                         };

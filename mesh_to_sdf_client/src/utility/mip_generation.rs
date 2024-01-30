@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::mip_generation_pass::MipGenerationPass;
+use crate::passes::mip_generation_pass::MipGenerationPass;
 
 pub fn generate_mipmaps(
     device: &wgpu::Device,
@@ -15,7 +15,6 @@ pub fn generate_mipmaps(
     let views = (0..mip_count)
         .map(|mip| {
             texture.create_view(&wgpu::TextureViewDescriptor {
-                // TODO: rename all label with this format
                 label: Some("generate_mipmaps::mip_view"),
                 format: None,
                 dimension: None,

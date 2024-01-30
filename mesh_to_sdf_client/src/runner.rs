@@ -273,7 +273,7 @@ impl ExampleContext {
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    label: None,
+                    label: Some("Device Descriptor"),
                     features: (optional_features & adapter_features) | required_features,
                     limits: needed_limits,
                 },
@@ -428,130 +428,115 @@ async fn run(
                     data.shaders.clear();
                 }
 
-                // Rebuild render pipeline if needed
-                if data.lib == crate::reload_flags::LibState::Reloaded {
-                    log::info!("reload lib");
-                    if let Err(program_error) =
-                        program.update_passes(surface, &context.device, &context.adapter)
-                    {
-                        log::error!("{program_error}");
+                // Get the next frame and view.
+                let texture = surface.get_current_texture();
+                let frame = match texture {
+                    Ok(f) => f,
+                    Err(e) => {
+                        log::warn!("surface lost: window is probably minimized: {e}");
+                        return;
                     }
-                    data.lib = crate::reload_flags::LibState::Stable;
-                }
+                };
 
-                // Render a frame if the lib is stable.
-                if data.lib == crate::reload_flags::LibState::Stable {
-                    // Get the next frame and view.
-                    let texture = surface.get_current_texture();
-                    let frame = match texture {
-                        Ok(f) => f,
-                        Err(e) => {
-                            log::warn!("surface lost: window is probably minimized: {e}");
-                            return;
-                        }
-                    };
+                let view = frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
 
-                    let view = frame
-                        .texture
-                        .create_view(&wgpu::TextureViewDescriptor::default());
+                // Update the program before drawing.
+                program.update(&context.queue);
 
-                    // Update the program before drawing.
-                    program.update(&context.queue);
+                // Render the program first so the ui is on top.
+                program.render(&view, &context.device, &context.queue);
 
-                    // Render the program first so the ui is on top.
-                    program.render(&view, &context.device, &context.queue);
+                // Update the ui before drawing.
+                let input = egui_state.take_egui_input(&window_loop.window);
 
-                    // Update the ui before drawing.
-                    let input = egui_state.take_egui_input(&window_loop.window);
+                let egui_context = egui_state.egui_ctx();
 
-                    let egui_context = egui_state.egui_ctx();
+                // let pixels_per_point = egui_context.pixels_per_point();
+                // if pixels_per_point != 1.0 {
+                //     egui_context.set_zoom_factor(1.0 / pixels_per_point);
+                // }
 
-                    // let pixels_per_point = egui_context.pixels_per_point();
-                    // if pixels_per_point != 1.0 {
-                    //     egui_context.set_zoom_factor(1.0 / pixels_per_point);
-                    // }
+                egui_context.begin_frame(input);
+                egui::panel::SidePanel::new(
+                    egui::panel::Side::Left,
+                    egui::Id::new("control_panel"),
+                )
+                .default_width(size.width as f32 * 0.15)
+                .show(egui_context, |ui| {
+                    program.draw_ui(&context.device, &context.queue, ui);
+                });
 
-                    egui_context.begin_frame(input);
-                    egui::panel::SidePanel::new(
-                        egui::panel::Side::Left,
-                        egui::Id::new("control_panel"),
-                    )
-                    .default_width(size.width as f32 * 0.15)
+                egui::Area::new("Viewport")
+                    .fixed_pos((0.0, 0.0))
                     .show(egui_context, |ui| {
-                        program.draw_ui(&context.device, &context.queue, ui);
+                        ui.with_layer_id(egui::LayerId::background(), |ui| {
+                            program.draw_gizmos(ui);
+                        })
                     });
 
-                    egui::Area::new("Viewport")
-                        .fixed_pos((0.0, 0.0))
-                        .show(egui_context, |ui| {
-                            ui.with_layer_id(egui::LayerId::background(), |ui| {
-                                program.draw_gizmos(ui);
-                            })
-                        });
+                let output = egui_context.end_frame();
+                let paint_jobs =
+                    egui_context.tessellate(output.shapes, egui_context.pixels_per_point());
+                let screen_descriptor = ScreenDescriptor {
+                    size_in_pixels: [config.width, config.height],
+                    pixels_per_point: egui_context.pixels_per_point(),
+                };
 
-                    let output = egui_context.end_frame();
-                    let paint_jobs =
-                        egui_context.tessellate(output.shapes, egui_context.pixels_per_point());
-                    let screen_descriptor = ScreenDescriptor {
-                        size_in_pixels: [config.width, config.height],
-                        pixels_per_point: egui_context.pixels_per_point(),
-                    };
+                // Create a command encoder.
+                let mut encoder = context
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-                    // Create a command encoder.
-                    let mut encoder = context
-                        .device
-                        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-                    // Update the egui renderer.
-                    {
-                        for (id, image_delta) in &output.textures_delta.set {
-                            egui_renderer.update_texture(
-                                &context.device,
-                                &context.queue,
-                                *id,
-                                image_delta,
-                            );
-                        }
-                        for id in &output.textures_delta.free {
-                            egui_renderer.free_texture(id);
-                        }
-
-                        {
-                            egui_renderer.update_buffers(
-                                &context.device,
-                                &context.queue,
-                                &mut encoder,
-                                &paint_jobs,
-                                &screen_descriptor,
-                            );
-                        }
+                // Update the egui renderer.
+                {
+                    for (id, image_delta) in &output.textures_delta.set {
+                        egui_renderer.update_texture(
+                            &context.device,
+                            &context.queue,
+                            *id,
+                            image_delta,
+                        );
+                    }
+                    for id in &output.textures_delta.free {
+                        egui_renderer.free_texture(id);
                     }
 
-                    // Render ui.
                     {
-                        let mut render_pass =
-                            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                                label: None,
-                                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                    view: &view,
-                                    resolve_target: None,
-                                    ops: wgpu::Operations {
-                                        load: wgpu::LoadOp::Load,
-                                        store: wgpu::StoreOp::Store,
-                                    },
-                                })],
-                                depth_stencil_attachment: None,
-                                timestamp_writes: None,
-                                occlusion_query_set: None,
-                            });
-
-                        egui_renderer.render(&mut render_pass, &paint_jobs, &screen_descriptor);
+                        egui_renderer.update_buffers(
+                            &context.device,
+                            &context.queue,
+                            &mut encoder,
+                            &paint_jobs,
+                            &screen_descriptor,
+                        );
                     }
-
-                    // Present the frame.
-                    context.queue.submit(Some(encoder.finish()));
-                    frame.present();
                 }
+
+                // Render ui.
+                {
+                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("egui render pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Load,
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                    });
+
+                    egui_renderer.render(&mut render_pass, &paint_jobs, &screen_descriptor);
+                }
+
+                // Present the frame.
+                context.queue.submit(Some(encoder.finish()));
+                frame.present();
             }
         },
     );

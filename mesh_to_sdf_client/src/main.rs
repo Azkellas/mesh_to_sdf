@@ -1,15 +1,19 @@
 //! Client application for the `mesh_to_sdf` project.
-
+//!
+//! ![example](https://github.com/Azkellas/mesh_to_sdf/blob/main/demo.gif)
+//!
+//! A visualization client for the SDF of a mesh.
+//! Generates a SDF from a mesh and renders it.
 mod camera;
 mod camera_control;
 mod frame_rate;
 mod gltf;
+mod passes;
+mod pbr;
 mod reload_flags;
 mod runner;
 mod sdf;
 mod sdf_program;
-mod sdf_render_pass;
-mod shader_builder;
 mod texture;
 mod utility;
 
@@ -25,7 +29,6 @@ use std::path::Path;
 fn main() {
     let data = Arc::new(Mutex::new(crate::reload_flags::ReloadFlags {
         shaders: vec![],
-        lib: crate::reload_flags::LibState::Stable,
     }));
 
     // Watch shaders folder.
@@ -33,7 +36,7 @@ fn main() {
     // Only enabled in native debug mode.
     #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
     {
-        let path = "mesh_to_sdf_client/shaders";
+        let path = "shaders";
         log::info!("Watching {path}");
         let data = data.clone();
         std::thread::spawn(move || {
