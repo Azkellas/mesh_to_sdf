@@ -57,7 +57,7 @@
 //! To use your favorite math library with `mesh_to_sdf`, you need to add it to `mesh_to_sdf` dependencies. For example, to use `glam`:
 //! ```toml
 //! [dependencies]
-//! mesh_to_sdf = { version = "0.1", default-features = false features = ["glam"] }
+//! mesh_to_sdf = { version = "0.1", features = ["glam"] }
 //! ```
 //!
 //! Currently, the following libraries are supported:
@@ -206,7 +206,7 @@ struct State {
     // signed distance to mesh.
     distance: NotNan<f32>,
     // current cell in grid.
-    cell: (usize, usize, usize),
+    cell: [usize; 3],
     // triangle that generated the distance.
     triangle: (usize, usize, usize),
 }
@@ -223,6 +223,66 @@ impl Ord for State {
 impl PartialOrd for State {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+/// Get the index of a cell in a grid.
+pub fn get_cell_idx(cell: &[usize; 3], cell_count: &[usize; 3]) -> usize {
+    cell[2] + cell[1] * cell_count[2] + cell[0] * cell_count[1] * cell_count[2]
+}
+
+/// Get the position of a cell in a grid.
+pub fn get_cell_point<V: Point>(cell: &[usize; 3], start_pos: &V, cell_radius: &V) -> V {
+    V::new(
+        start_pos.x() + cell[0] as f32 * cell_radius.x(),
+        start_pos.y() + cell[1] as f32 * cell_radius.y(),
+        start_pos.z() + cell[2] as f32 * cell_radius.z(),
+    )
+}
+
+/// Result of snapping a point to the grid.
+/// If the point is inside the grid, the cell index is returned.
+/// If the point is outside the grid, the cell index is the nearest cell.
+pub enum SnapResult {
+    /// The point is inside the grid.
+    /// Cell index is the cell it is within.
+    Inside([usize; 3]),
+    /// The point is outside the grid
+    /// Cell index is the cell it is the nearest from.
+    Outside([usize; 3]),
+}
+
+/// Snap a point to the grid.
+/// Returns None if the point is outside the grid.
+pub fn snap_point_to_grid<V: Point>(
+    point: &V,
+    start_pos: &V,
+    cell_radius: &V,
+    cell_count: &[usize; 3],
+) -> SnapResult {
+    // TODO FIXME: I'm pretty sure this is incorrect
+    // in other parts of the code, we suppose start_pos to be the center of the first cell.
+    // here, we suppose it is the corner of the first cell.
+    let cell = point.sub(start_pos).comp_div(cell_radius);
+
+    let cell = [
+        cell.x().floor() as isize,
+        cell.y().floor() as isize,
+        cell.z().floor() as isize,
+    ];
+
+    let ires = [
+        cell[0].clamp(0, cell_count[0] as isize - 1),
+        cell[1].clamp(0, cell_count[1] as isize - 1),
+        cell[2].clamp(0, cell_count[2] as isize - 1),
+    ];
+
+    let res = [ires[0] as usize, ires[1] as usize, ires[2] as usize];
+
+    if ires != cell {
+        SnapResult::Outside(res)
+    } else {
+        SnapResult::Inside(res)
     }
 }
 
@@ -273,7 +333,7 @@ pub fn generate_grid_sdf<V, I>(
     indices: Topology<I>,
     start_pos: &V,
     cell_radius: &V,
-    cell_count: &[u32; 3],
+    cell_count: &[usize; 3],
 ) -> Vec<f32>
 where
     V: Point,
@@ -296,17 +356,10 @@ where
     //          and add the cell to the heap.
     //
     // - return the grid.
-    let total_cell_count = (cell_count[0] * cell_count[1] * cell_count[2]) as usize;
+    let total_cell_count = cell_count[0] * cell_count[1] * cell_count[2];
     let mut grid = vec![f32::MAX; total_cell_count];
 
     let mut heap = std::collections::BinaryHeap::new();
-
-    // TODO: expose this in the api?
-    let get_cell_idx = |cell: (usize, usize, usize)| {
-        cell.2
-            + cell.1 * cell_count[2] as usize
-            + cell.0 * cell_count[1] as usize * cell_count[2] as usize
-    };
 
     // debug step counter.
     let mut steps = 0;
@@ -324,52 +377,54 @@ where
         let bounding_box = geo::triangle_bounding_box(a, b, c);
 
         // The bounding box is snapped to the grid.
-        // min is floored and max is ceiled to keep nearby cells.
-        let min_cell = bounding_box.0.sub(start_pos).comp_div(cell_radius);
+        let min_cell = match snap_point_to_grid(&bounding_box.0, start_pos, cell_radius, cell_count)
+        {
+            SnapResult::Inside(cell) => cell,
+            SnapResult::Outside(cell) => cell,
+        };
+        let max_cell = match snap_point_to_grid(&bounding_box.1, start_pos, cell_radius, cell_count)
+        {
+            SnapResult::Inside(cell) => cell,
+            SnapResult::Outside(cell) => cell,
+        };
+        // Add one to max_cell and remove one to min_cell to make sure we have all the cells.
         let min_cell = [
-            min_cell.x().floor() as usize,
-            min_cell.y().floor() as usize,
-            min_cell.z().floor() as usize,
+            if min_cell[0] == 0 { 0 } else { min_cell[0] - 1 },
+            if min_cell[1] == 0 { 0 } else { min_cell[1] - 1 },
+            if min_cell[2] == 0 { 0 } else { min_cell[2] - 1 },
         ];
-
-        let max_cell = bounding_box.1.sub(start_pos).comp_div(cell_radius);
         let max_cell = [
-            max_cell.x().ceil() as usize,
-            max_cell.y().ceil() as usize,
-            max_cell.z().ceil() as usize,
+            (max_cell[0] + 1).min(cell_count[0] - 1),
+            (max_cell[1] + 1).min(cell_count[1] - 1),
+            (max_cell[2] + 1).min(cell_count[2] - 1),
         ];
 
         // For each cell in the bounding box.
-        for x in min_cell[0]..=max_cell[0] {
-            for y in min_cell[1]..=max_cell[1] {
-                for z in min_cell[2]..=max_cell[2] {
-                    let cell = (x, y, z);
-                    // TODO: expose this in point for better ergonomics and optimisation.
-                    let cell_pos = V::new(
-                        start_pos.x() + cell.0 as f32 * cell_radius.x(),
-                        start_pos.y() + cell.1 as f32 * cell_radius.y(),
-                        start_pos.z() + cell.2 as f32 * cell_radius.z(),
-                    );
+        for cell in itertools::iproduct!(
+            min_cell[0]..=max_cell[0],
+            min_cell[1]..=max_cell[1],
+            min_cell[2]..=max_cell[2]
+        ) {
+            let cell = [cell.0, cell.1, cell.2];
+            let cell_idx = get_cell_idx(&cell, cell_count);
+            if cell_idx >= total_cell_count {
+                continue;
+            }
 
-                    let cell_idx = get_cell_idx(cell);
-                    if cell_idx >= total_cell_count {
-                        continue;
-                    }
+            let cell_pos = get_cell_point(&cell, start_pos, cell_radius);
 
-                    let distance = geo::point_triangle_signed_distance(&cell_pos, a, b, c);
-                    if compare_distances(distance, grid[cell_idx]).is_lt() {
-                        // New smallest ditance: update the grid and add the cell to the heap.
-                        steps += 1;
+            let distance = geo::point_triangle_signed_distance(&cell_pos, a, b, c);
+            if compare_distances(distance, grid[cell_idx]).is_lt() {
+                // New smallest ditance: update the grid and add the cell to the heap.
+                steps += 1;
 
-                        grid[cell_idx] = distance;
-                        let state = State {
-                            distance: NotNan::new(distance).unwrap(), // TODO: handle error
-                            triangle,
-                            cell,
-                        };
-                        heap.push(state);
-                    }
-                }
+                grid[cell_idx] = distance;
+                let state = State {
+                    distance: NotNan::new(distance).unwrap(), // TODO: handle error
+                    triangle,
+                    cell,
+                };
+                heap.push(state);
             }
         }
     });
@@ -385,57 +440,44 @@ where
         let b = &vertices[triangle.1];
         let c = &vertices[triangle.2];
 
-        // check neighbour cells
-        for dx in -1..=1 {
-            for dy in -1..=1 {
-                for dz in -1..=1 {
-                    // Compute neighbour cell.
-                    // TODO: clean, this is ugly.
-                    let neighbour_cell = (
-                        cell.0 as isize + dx,
-                        cell.1 as isize + dy,
-                        cell.2 as isize + dz,
-                    );
-                    if neighbour_cell.0 < 0
-                        || neighbour_cell.1 < 0
-                        || neighbour_cell.2 < 0
-                        || neighbour_cell.0 >= cell_count[0] as isize
-                        || neighbour_cell.1 >= cell_count[1] as isize
-                        || neighbour_cell.2 >= cell_count[2] as isize
-                    {
-                        continue;
-                    }
+        // Compute neighbours around the cell in the three directions.
+        // Discard neighbours that are outside the grid.
+        let neighbours = itertools::iproduct!(-1..=1, -1..=1, -1..=1)
+            .map(|v| {
+                (
+                    cell[0] as isize + v.0,
+                    cell[1] as isize + v.1,
+                    cell[2] as isize + v.2,
+                )
+            })
+            .filter(|&(x, y, z)| {
+                x >= 0
+                    && y >= 0
+                    && z >= 0
+                    && x < cell_count[0] as isize
+                    && y < cell_count[1] as isize
+                    && z < cell_count[2] as isize
+            })
+            .map(|(x, y, z)| [x as usize, y as usize, z as usize]);
 
-                    let neighbour_cell = (
-                        neighbour_cell.0 as usize,
-                        neighbour_cell.1 as usize,
-                        neighbour_cell.2 as usize,
-                    );
+        for neighbour_cell in neighbours {
+            let neighbour_cell_pos = get_cell_point(&neighbour_cell, start_pos, cell_radius);
 
-                    let neighbour_cell_pos = V::new(
-                        start_pos.x() + neighbour_cell.0 as f32 * cell_radius.x(),
-                        start_pos.y() + neighbour_cell.1 as f32 * cell_radius.y(),
-                        start_pos.z() + neighbour_cell.2 as f32 * cell_radius.z(),
-                    );
+            let neighbour_cell_idx = get_cell_idx(&neighbour_cell, cell_count);
 
-                    let neighbour_cell_idx = get_cell_idx(neighbour_cell);
+            let distance = geo::point_triangle_signed_distance(&neighbour_cell_pos, a, b, c);
 
-                    let distance =
-                        geo::point_triangle_signed_distance(&neighbour_cell_pos, a, b, c);
+            if compare_distances(distance, grid[neighbour_cell_idx]).is_lt() {
+                // New smallest ditance: update the grid and add the cell to the heap.
+                steps += 1;
 
-                    if compare_distances(distance, grid[neighbour_cell_idx]).is_lt() {
-                        // New smallest ditance: update the grid and add the cell to the heap.
-                        steps += 1;
-
-                        grid[neighbour_cell_idx] = distance;
-                        let state = State {
-                            distance: NotNan::new(distance).unwrap(), // TODO: handle error
-                            triangle,
-                            cell: neighbour_cell,
-                        };
-                        heap.push(state);
-                    }
-                }
+                grid[neighbour_cell_idx] = distance;
+                let state = State {
+                    distance: NotNan::new(distance).unwrap(), // TODO: handle error
+                    triangle,
+                    cell: neighbour_cell,
+                };
+                heap.push(state);
             }
         }
     }

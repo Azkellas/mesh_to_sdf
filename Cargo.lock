@@ -1767,6 +1767,7 @@ dependencies = [
  "cgmath",
  "criterion",
  "easy-gltf",
+ "env_logger",
  "float-cmp",
  "glam 0.25.0",
  "itertools 0.12.1",

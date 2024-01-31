@@ -2,6 +2,8 @@ use itertools::{Itertools, MinMaxResult};
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 fn criterion_benchmark(c: &mut Criterion) {
+    // env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     let path = "assets/knight.glb";
     let gltf = easy_gltf::load(path).unwrap();
 
@@ -48,7 +50,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 black_box(mesh_to_sdf::Topology::TriangleList(Some(indices))),
                 black_box(&[xmin, ymin, zmin]),
                 black_box(&[cell_radius, cell_radius, cell_radius]),
-                black_box(&[xsize as u32, ysize as u32, zsize as u32]),
+                black_box(&[xsize as usize, ysize as usize, zsize as usize]),
             )
         })
     });

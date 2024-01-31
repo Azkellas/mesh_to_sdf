@@ -10,7 +10,7 @@ description = "A mesh to SDF converter and renderer"
 keywords = ["mesh", "sdf", "signed distance field", "distance field", "3d"]
 
 [dependencies]
-mesh_to_sdf = { path = "../mesh_to_sdf", version="0.1.0" }
+mesh_to_sdf = { path = "../mesh_to_sdf", version="0.1.0", features = ["glam"] }
 egui = "0.25.0"
 egui-gizmo = "0.14.1"
 wgpu = { version = "0.18.0", default-features = false }

@@ -2,6 +2,8 @@ use itertools::{Itertools, MinMaxResult};
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 fn criterion_benchmark(c: &mut Criterion) {
+    // env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     let path = "assets/knight.glb";
     let gltf = easy_gltf::load(path).unwrap();
 

@@ -40,7 +40,11 @@ impl Sdf {
             mesh_to_sdf::Topology::TriangleList(Some(indices)),
             start_cell,
             cell_radius,
-            cell_count,
+            &[
+                cell_count[0] as usize,
+                cell_count[1] as usize,
+                cell_count[2] as usize,
+            ],
         );
 
         let uniforms = SdfUniforms {
