@@ -20,9 +20,6 @@ pub struct Sdf {
     pub data: Vec<f32>,
     pub data_buffer: wgpu::Buffer,
 
-    pub cell_radius: [f32; 3],
-    pub cell_count: u32,
-
     pub bind_group: wgpu::BindGroup,
 }
 
@@ -32,30 +29,27 @@ impl Sdf {
         vertices: &[[f32; 3]],
         indices: &[u32],
         start_cell: &[f32; 3],
-        cell_radius: &[f32; 3],
+        end_cell: &[f32; 3],
         cell_count: &[u32; 3],
     ) -> Result<Self> {
+        // TODO: send a grid in new.
+        let ucell_count = [
+            cell_count[0] as usize,
+            cell_count[1] as usize,
+            cell_count[2] as usize,
+        ];
+        let grid = mesh_to_sdf::Grid::from_bounding_box(start_cell, end_cell, &ucell_count);
         let data = mesh_to_sdf::generate_grid_sdf(
             vertices,
             mesh_to_sdf::Topology::TriangleList(Some(indices)),
-            start_cell,
-            cell_radius,
-            &[
-                cell_count[0] as usize,
-                cell_count[1] as usize,
-                cell_count[2] as usize,
-            ],
+            &grid,
         );
 
+        let cell_size = grid.get_cell_size();
         let uniforms = SdfUniforms {
             start: [start_cell[0], start_cell[1], start_cell[2], 0.0],
-            end: [
-                start_cell[0] + cell_radius[0] * cell_count[0] as f32,
-                start_cell[1] + cell_radius[1] * cell_count[1] as f32,
-                start_cell[2] + cell_radius[2] * cell_count[2] as f32,
-                0.0,
-            ],
-            cell_size: [cell_radius[0], cell_radius[1], cell_radius[2], 0.0],
+            end: [end_cell[0], end_cell[1], end_cell[2], 0.0],
+            cell_size: [cell_size[0], cell_size[1], cell_size[2], 0.0],
             cell_count: [cell_count[0], cell_count[1], cell_count[2], 0],
         };
 
@@ -94,9 +88,10 @@ impl Sdf {
             data,
             data_buffer,
             bind_group,
-
-            cell_radius: *cell_radius,
-            cell_count: cell_count[0] * cell_count[1] * cell_count[2],
         })
+    }
+
+    pub fn get_cell_count(&self) -> u32 {
+        self.uniforms.cell_count[0] * self.uniforms.cell_count[1] * self.uniforms.cell_count[2]
     }
 }

@@ -34,26 +34,23 @@ fn main() {
     // Get grid sdf
     // if you can, use generate_grid_sdf instead of generate_sdf.
     let bounding_box_min = cgmath::Vector3::new(0., 0., 0.);
-    let cell_radius = cgmath::Vector3::new(1., 1., 1.);
-    let cell_count = [3, 3, 3];
-    // sample from [0, 0, 0] to [2, 2, 2]
+    let bounding_box_max = cgmath::Vector3::new(2., 2., 2.);
+    let cell_count = [3_usize, 3, 3];
+
+    let grid =
+        mesh_to_sdf::Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, &cell_count);
 
     let sdf: Vec<f32> = mesh_to_sdf::generate_grid_sdf(
         &vertices,
-        mesh_to_sdf::Topology::TriangleList(Some(&indices)),
-        &bounding_box_min,
-        &cell_radius,
-        &cell_count,
+        mesh_to_sdf::Topology::TriangleList(Some(indices)),
+        &grid,
     );
 
     for x in 0..cell_count[0] {
         for y in 0..cell_count[1] {
             for z in 0..cell_count[2] {
-                let index = z + y * cell_count[2] + x * cell_count[1] * cell_count[2];
-                println!(
-                    "Distance to cell [{}, {}, {}]: {}",
-                    x, y, z, sdf[index as usize]
-                );
+                let index = grid.get_cell_idx(&[x, y, z]);
+                println!("Distance to cell [{}, {}, {}]: {}", x, y, z, sdf[index]);
             }
         }
     }

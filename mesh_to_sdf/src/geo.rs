@@ -24,7 +24,7 @@ pub(crate) fn point_triangle_signed_distance<V: Point>(x0: &V, x1: &V, x2: &V, x
 
 /// Return the barycenter of a triangle.
 fn triangle_barycenter<V: Point>(a: &V, b: &V, c: &V) -> V {
-    (a.add(b).add(c)).mul(1.0 / 3.0)
+    (a.add(b).add(c)).fmul(1.0 / 3.0)
 }
 
 /// Return the normal, which is NOT normalized.
@@ -65,9 +65,9 @@ fn point_triangle_distance<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) -> f32 {
 
     if w23 >= 0.0 && w31 >= 0.0 && w12 >= 0.0 {
         // if we're inside the triangle
-        let x1p = x1.mul(w23);
-        let x2p = x2.mul(w31);
-        let x3p = x3.mul(w12);
+        let x1p = x1.fmul(w23);
+        let x2p = x2.fmul(w31);
+        let x3p = x3.fmul(w12);
         let projected = x1p.add(&x2p).add(&x3p);
         x0.dist(&projected)
     } else {
@@ -104,7 +104,7 @@ pub fn point_segment_distance<V: Point>(x0: &V, x1: &V, x2: &V) -> f32 {
     s12 = s12.clamp(0.0, 1.0);
 
     // and find the distance
-    x0.dist(&x1.mul(s12).add(&x2.mul(1.0 - s12)))
+    x0.dist(&x1.fmul(s12).add(&x2.fmul(1.0 - s12)))
 }
 
 /// Compute the bounding box of a triangle.

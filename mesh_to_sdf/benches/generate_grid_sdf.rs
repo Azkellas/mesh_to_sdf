@@ -43,14 +43,18 @@ fn criterion_benchmark(c: &mut Criterion) {
     println!("vertices: {:?}", vertices.len());
     println!("triangles: {:?}", indices.len() / 3);
 
+    let grid = mesh_to_sdf::Grid::from_bounding_box(
+        &[xmin, ymin, zmin],
+        &[xmax, ymax, zmax],
+        &[xsize as usize, ysize as usize, zsize as usize],
+    );
+
     c.bench_function("generate_grid_sdf", |b| {
         b.iter(|| {
             mesh_to_sdf::generate_grid_sdf(
                 black_box(&vertices),
                 black_box(mesh_to_sdf::Topology::TriangleList(Some(indices))),
-                black_box(&[xmin, ymin, zmin]),
-                black_box(&[cell_radius, cell_radius, cell_radius]),
-                black_box(&[xsize as usize, ysize as usize, zsize as usize]),
+                black_box(&grid),
             )
         })
     });

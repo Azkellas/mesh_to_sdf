@@ -58,7 +58,7 @@ pub trait Point: Sized + Copy + Sync + Send {
         self.sub(other).length()
     }
     /// Multiply a point by a scalar.
-    fn mul(&self, other: f32) -> Self {
+    fn fmul(&self, other: f32) -> Self {
         Self::new(self.x() * other, self.y() * other, self.z() * other)
     }
     /// Divide two points by components.

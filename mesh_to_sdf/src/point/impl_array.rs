@@ -32,7 +32,7 @@ mod tests {
         assert_eq!(p1.dot(&p2), 32.0);
         assert_eq!(p1.length(), 3.7416575);
         assert_eq!(p1.dist(&p2), 5.196152);
-        assert_eq!(p1.mul(2.0), [2.0, 4.0, 6.0]);
+        assert_eq!(p1.fmul(2.0), [2.0, 4.0, 6.0]);
         assert_eq!(p1.comp_div(&p2), [0.25, 0.4, 0.5]);
     }
 }

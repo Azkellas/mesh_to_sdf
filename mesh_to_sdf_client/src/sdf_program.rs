@@ -942,19 +942,15 @@ impl SdfProgram {
                 };
                 self.model_info = Some(model_info);
 
-                let cell_radius = [
-                    (xmax - xmin) / (self.parameters.cell_count[0] - 1) as f32,
-                    (ymax - ymin) / (self.parameters.cell_count[1] - 1) as f32,
-                    (zmax - zmin) / (self.parameters.cell_count[2] - 1) as f32,
-                ];
                 let start_cell = [xmin, ymin, zmin];
+                let end_cell = [xmax, ymax, zmax];
 
                 self.sdf = Sdf::new(
                     device,
                     &vertices,
                     &indices,
                     &start_cell,
-                    &cell_radius,
+                    &end_cell,
                     &self.parameters.cell_count,
                 )
                 .ok();

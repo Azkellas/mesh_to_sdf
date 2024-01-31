@@ -64,7 +64,7 @@ impl Point for nalgebra::Vector3<f32> {
         (self - other).norm()
     }
     /// Multiply a point by a scalar.
-    fn mul(&self, other: f32) -> Self {
+    fn fmul(&self, other: f32) -> Self {
         self * other
     }
     /// Divide two points by components.
@@ -94,7 +94,7 @@ mod tests {
             assert!(Point::dot(&p1, &p2) == ap1.dot(&ap2));
             assert!(Point::length(&p1) == ap1.length());
             assert!(Point::dist(&p1, &p2) == ap1.dist(&ap2));
-            assert!(cmp(Point::mul(&p1, 2.0), ap1.mul(2.0)));
+            assert!(cmp(Point::fmul(&p1, 2.0), ap1.fmul(2.0)));
             if ap2[0] != 0.0 && ap2[1] != 0.0 && ap2[2] != 0.0 {
                 assert!(cmp(Point::comp_div(&p1, &p2), ap1.comp_div(&ap2)));
             }
@@ -117,7 +117,7 @@ mod tests {
             assert!(Point::dot(&p1, &p2) == ap1.dot(&ap2));
             assert!(Point::length(&p1) == ap1.length());
             assert!(Point::dist(&p1, &p2) == ap1.dist(&ap2));
-            assert!(cmp(Point::mul(&p1, 2.0), ap1.mul(2.0)));
+            assert!(cmp(Point::fmul(&p1, 2.0), ap1.fmul(2.0)));
             if ap2[0] != 0.0 && ap2[1] != 0.0 && ap2[2] != 0.0 {
                 assert!(cmp(Point::comp_div(&p1, &p2), ap1.comp_div(&ap2)));
             }

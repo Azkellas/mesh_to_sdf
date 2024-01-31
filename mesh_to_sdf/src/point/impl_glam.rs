@@ -42,7 +42,7 @@ impl Point for glam::Vec3 {
         glam::Vec3::distance(*self, *other)
     }
     /// Multiply a point by a scalar.
-    fn mul(&self, other: f32) -> Self {
+    fn fmul(&self, other: f32) -> Self {
         *self * other
     }
     /// Divide two points by components.
@@ -69,7 +69,7 @@ mod tests {
             assert!(Point::dot(&p1, &p2) == ap1.dot(&ap2));
             assert!(Point::length(&p1) == ap1.length());
             assert!(Point::dist(&p1, &p2) == ap1.dist(&ap2));
-            assert!(Point::mul(&p1, 2.0).as_ref() == &ap1.mul(2.0));
+            assert!(Point::fmul(&p1, 2.0).as_ref() == &ap1.fmul(2.0));
             if ap2.x() != 0.0 && ap2.y() != 0.0 && ap2.z() != 0.0 {
                 assert!(Point::comp_div(&p1, &p2).as_ref() == &ap1.comp_div(&ap2));
             }

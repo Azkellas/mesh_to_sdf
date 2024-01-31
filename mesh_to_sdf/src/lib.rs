@@ -8,11 +8,11 @@
 //! - [`generate_grid_sdf`]: computes the signed distance field for the mesh defined by `vertices` and `indices` on a grid with `cell_count` cells of size `cell_radius` starting at `start_pos`.
 //!
 //! ```
-//! # use mesh_to_sdf::{generate_sdf, generate_grid_sdf, Topology};
-//! let vertices: Vec<[f32; 3]> = vec![[0., 1., 0.], [1., 2., 3.], [1., 3., 4.]];
+//! # use mesh_to_sdf::{generate_sdf, generate_grid_sdf, Topology, Grid};
+//! let vertices: Vec<[f32; 3]> = vec![[0.5, 1.5, 0.5], [1., 2., 3.], [1., 3., 7.]];
 //! let indices: Vec<u32> = vec![0, 1, 2];
 //!
-//! let query_points: Vec<[f32; 3]> = vec![[0., 0., 0.]];
+//! let query_points: Vec<[f32; 3]> = vec![[0.5, 0.5, 0.5]];
 //!
 //! // Query points are expected to be in the same space as the mesh.
 //! let sdf: Vec<f32> = generate_sdf(
@@ -28,21 +28,20 @@
 //! // if you can, use generate_grid_sdf instead of generate_sdf.
 //! let bounding_box_min = [0., 0., 0.];
 //! let bounding_box_max = [10., 10., 10.];
-//! let cell_radius = [1., 1., 1.];
-//! let cell_count = [11, 11, 11]; // 0 1 2 .. 10 = 11 samples
+//! let cell_count = [10, 10, 10];
+//!
+//! let grid = Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, &cell_count);
 //!
 //! let sdf: Vec<f32> = generate_grid_sdf(
 //!     &vertices,
 //!     Topology::TriangleList(Some(&indices)),
-//!     &bounding_box_min,
-//!     &cell_radius,
-//!     &cell_count);
+//!     &grid);
 //!
 //! for x in 0..cell_count[0] {
 //!     for y in 0..cell_count[1] {
 //!         for z in 0..cell_count[2] {
-//!             let index = z + y * cell_count[2] + x * cell_count[1] * cell_count[2];
-//!             println!("Distance to cell [{}, {}, {}]: {}", x, y, z, sdf[index as usize]);
+//!             let index = grid.get_cell_idx(&[x, y, z]);
+//!             log::info!("Distance to cell [{}, {}, {}]: {}", x, y, z, sdf[index as usize]);
 //!         }
 //!     }
 //! }
@@ -81,8 +80,10 @@ use ordered_float::NotNan;
 use rayon::prelude::*;
 
 mod geo;
+mod grid;
 mod point;
 
+pub use grid::{Grid, SnapResult};
 pub use point::Point;
 
 /// Mesh Topology: how indices are stored.
@@ -226,66 +227,6 @@ impl PartialOrd for State {
     }
 }
 
-/// Get the index of a cell in a grid.
-pub fn get_cell_idx(cell: &[usize; 3], cell_count: &[usize; 3]) -> usize {
-    cell[2] + cell[1] * cell_count[2] + cell[0] * cell_count[1] * cell_count[2]
-}
-
-/// Get the position of a cell in a grid.
-pub fn get_cell_point<V: Point>(cell: &[usize; 3], start_pos: &V, cell_radius: &V) -> V {
-    V::new(
-        start_pos.x() + cell[0] as f32 * cell_radius.x(),
-        start_pos.y() + cell[1] as f32 * cell_radius.y(),
-        start_pos.z() + cell[2] as f32 * cell_radius.z(),
-    )
-}
-
-/// Result of snapping a point to the grid.
-/// If the point is inside the grid, the cell index is returned.
-/// If the point is outside the grid, the cell index is the nearest cell.
-pub enum SnapResult {
-    /// The point is inside the grid.
-    /// Cell index is the cell it is within.
-    Inside([usize; 3]),
-    /// The point is outside the grid
-    /// Cell index is the cell it is the nearest from.
-    Outside([usize; 3]),
-}
-
-/// Snap a point to the grid.
-/// Returns None if the point is outside the grid.
-pub fn snap_point_to_grid<V: Point>(
-    point: &V,
-    start_pos: &V,
-    cell_radius: &V,
-    cell_count: &[usize; 3],
-) -> SnapResult {
-    // TODO FIXME: I'm pretty sure this is incorrect
-    // in other parts of the code, we suppose start_pos to be the center of the first cell.
-    // here, we suppose it is the corner of the first cell.
-    let cell = point.sub(start_pos).comp_div(cell_radius);
-
-    let cell = [
-        cell.x().floor() as isize,
-        cell.y().floor() as isize,
-        cell.z().floor() as isize,
-    ];
-
-    let ires = [
-        cell[0].clamp(0, cell_count[0] as isize - 1),
-        cell[1].clamp(0, cell_count[1] as isize - 1),
-        cell[2].clamp(0, cell_count[2] as isize - 1),
-    ];
-
-    let res = [ires[0] as usize, ires[1] as usize, ires[2] as usize];
-
-    if ires != cell {
-        SnapResult::Outside(res)
-    } else {
-        SnapResult::Inside(res)
-    }
-}
-
 /// Generate a signed distance field from a mesh for a grid.
 ///
 /// A grid is defined by three parameters:
@@ -302,39 +243,32 @@ pub fn snap_point_to_grid<V: Point>(
 /// The index of a cell is `z + y * cell_count[2] + x * cell_count[1] * cell_count[2]`.
 ///
 /// ```
-/// # use mesh_to_sdf::{generate_grid_sdf, Topology};
-/// let vertices: Vec<[f32; 3]> = vec![[0., 1., 0.], [1., 2., 3.], [1., 3., 4.]];
+/// # use mesh_to_sdf::{generate_grid_sdf, Topology, Grid};
+/// let vertices: Vec<[f32; 3]> = vec![[0.5, 1.5, 0.5], [1., 2., 3.], [1., 3., 4.]];
 /// let indices: Vec<u32> = vec![0, 1, 2];
 ///
 /// let bounding_box_min = [0., 0., 0.];
 /// let bounding_box_max = [10., 10., 10.];
-/// let cell_radius = [1., 1., 1.];
-/// let cell_count = [11, 11, 11]; // 0 1 2 .. 10 = 11 samples
+/// let cell_count = [10, 10, 10];
+///
+/// let grid = Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, &cell_count);
 ///
 /// let sdf: Vec<f32> = generate_grid_sdf(
 ///     &vertices,
 ///     Topology::TriangleList(Some(&indices)),
-///     &bounding_box_min,
-///     &cell_radius,
-///     &cell_count);
+///     &grid);
 ///
 /// for x in 0..cell_count[0] {
 ///     for y in 0..cell_count[1] {
 ///         for z in 0..cell_count[2] {
-///             let index = z + y * cell_count[2] + x * cell_count[1] * cell_count[2];
-///             println!("Distance to cell [{}, {}, {}]: {}", x, y, z, sdf[index as usize]);
+///             let index = grid.get_cell_idx(&[x, y, z]);
+///             log::info!("Distance to cell [{}, {}, {}]: {}", x, y, z, sdf[index as usize]);
 ///         }
 ///     }
 /// }
 /// # assert_eq!(sdf[0], 1.0);
 /// ```
-pub fn generate_grid_sdf<V, I>(
-    vertices: &[V],
-    indices: Topology<I>,
-    start_pos: &V,
-    cell_radius: &V,
-    cell_count: &[usize; 3],
-) -> Vec<f32>
+pub fn generate_grid_sdf<V, I>(vertices: &[V], indices: Topology<I>, grid: &Grid<V>) -> Vec<f32>
 where
     V: Point,
     I: Copy + Into<u32> + Sync + Send,
@@ -356,8 +290,7 @@ where
     //          and add the cell to the heap.
     //
     // - return the grid.
-    let total_cell_count = cell_count[0] * cell_count[1] * cell_count[2];
-    let mut grid = vec![f32::MAX; total_cell_count];
+    let mut distances = vec![f32::MAX; grid.get_total_cell_count()];
 
     let mut heap = std::collections::BinaryHeap::new();
 
@@ -377,26 +310,24 @@ where
         let bounding_box = geo::triangle_bounding_box(a, b, c);
 
         // The bounding box is snapped to the grid.
-        let min_cell = match snap_point_to_grid(&bounding_box.0, start_pos, cell_radius, cell_count)
-        {
+        let min_cell = match grid.snap_point_to_grid(&bounding_box.0) {
             SnapResult::Inside(cell) => cell,
             SnapResult::Outside(cell) => cell,
         };
-        let max_cell = match snap_point_to_grid(&bounding_box.1, start_pos, cell_radius, cell_count)
-        {
+        let max_cell = match grid.snap_point_to_grid(&bounding_box.1) {
             SnapResult::Inside(cell) => cell,
             SnapResult::Outside(cell) => cell,
         };
-        // Add one to max_cell and remove one to min_cell to make sure we have all the cells.
+        // Add one to max_cell and remove one to min_cell to check nearby cells.
         let min_cell = [
             if min_cell[0] == 0 { 0 } else { min_cell[0] - 1 },
             if min_cell[1] == 0 { 0 } else { min_cell[1] - 1 },
             if min_cell[2] == 0 { 0 } else { min_cell[2] - 1 },
         ];
         let max_cell = [
-            (max_cell[0] + 1).min(cell_count[0] - 1),
-            (max_cell[1] + 1).min(cell_count[1] - 1),
-            (max_cell[2] + 1).min(cell_count[2] - 1),
+            (max_cell[0] + 1).min(grid.get_cell_count()[0] - 1),
+            (max_cell[1] + 1).min(grid.get_cell_count()[1] - 1),
+            (max_cell[2] + 1).min(grid.get_cell_count()[2] - 1),
         ];
 
         // For each cell in the bounding box.
@@ -406,19 +337,19 @@ where
             min_cell[2]..=max_cell[2]
         ) {
             let cell = [cell.0, cell.1, cell.2];
-            let cell_idx = get_cell_idx(&cell, cell_count);
-            if cell_idx >= total_cell_count {
+            let cell_idx = grid.get_cell_idx(&cell);
+            if cell_idx >= grid.get_total_cell_count() {
                 continue;
             }
 
-            let cell_pos = get_cell_point(&cell, start_pos, cell_radius);
+            let cell_pos = grid.get_cell_center(&cell);
 
             let distance = geo::point_triangle_signed_distance(&cell_pos, a, b, c);
-            if compare_distances(distance, grid[cell_idx]).is_lt() {
+            if compare_distances(distance, distances[cell_idx]).is_lt() {
                 // New smallest ditance: update the grid and add the cell to the heap.
                 steps += 1;
 
-                grid[cell_idx] = distance;
+                distances[cell_idx] = distance;
                 let state = State {
                     distance: NotNan::new(distance).unwrap(), // TODO: handle error
                     triangle,
@@ -454,24 +385,24 @@ where
                 x >= 0
                     && y >= 0
                     && z >= 0
-                    && x < cell_count[0] as isize
-                    && y < cell_count[1] as isize
-                    && z < cell_count[2] as isize
+                    && x < grid.get_cell_count()[0] as isize
+                    && y < grid.get_cell_count()[1] as isize
+                    && z < grid.get_cell_count()[2] as isize
             })
             .map(|(x, y, z)| [x as usize, y as usize, z as usize]);
 
         for neighbour_cell in neighbours {
-            let neighbour_cell_pos = get_cell_point(&neighbour_cell, start_pos, cell_radius);
+            let neighbour_cell_pos = grid.get_cell_center(&neighbour_cell);
 
-            let neighbour_cell_idx = get_cell_idx(&neighbour_cell, cell_count);
+            let neighbour_cell_idx = grid.get_cell_idx(&neighbour_cell);
 
             let distance = geo::point_triangle_signed_distance(&neighbour_cell_pos, a, b, c);
 
-            if compare_distances(distance, grid[neighbour_cell_idx]).is_lt() {
+            if compare_distances(distance, distances[neighbour_cell_idx]).is_lt() {
                 // New smallest ditance: update the grid and add the cell to the heap.
                 steps += 1;
 
-                grid[neighbour_cell_idx] = distance;
+                distances[neighbour_cell_idx] = distance;
                 let state = State {
                     distance: NotNan::new(distance).unwrap(), // TODO: handle error
                     triangle,
@@ -483,5 +414,5 @@ where
     }
     log::info!("[generate_grid_sdf] propagation steps: {}", steps);
 
-    grid
+    distances
 }

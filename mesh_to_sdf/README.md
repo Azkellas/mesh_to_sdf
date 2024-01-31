@@ -10,10 +10,10 @@ This crate provides two entry points:
 - [`generate_grid_sdf`]: computes the signed distance field for the mesh defined by `vertices` and `indices` on a grid with `cell_count` cells of size `cell_radius` starting at `start_pos`.
 
 ```rust
-let vertices: Vec<[f32; 3]> = vec![[0., 1., 0.], [1., 2., 3.], [1., 3., 4.]];
+let vertices: Vec<[f32; 3]> = vec![[0.5, 1.5, 0.5], [1., 2., 3.], [1., 3., 7.]];
 let indices: Vec<u32> = vec![0, 1, 2];
 
-let query_points: Vec<[f32; 3]> = vec![[0., 0., 0.]];
+let query_points: Vec<[f32; 3]> = vec![[0.5, 0.5, 0.5]];
 
 // Query points are expected to be in the same space as the mesh.
 let sdf: Vec<f32> = generate_sdf(
@@ -28,21 +28,20 @@ for point in query_points.iter().zip(sdf.iter()) {
 // if you can, use generate_grid_sdf instead of generate_sdf.
 let bounding_box_min = [0., 0., 0.];
 let bounding_box_max = [10., 10., 10.];
-let cell_radius = [1., 1., 1.];
-let cell_count = [11, 11, 11]; // 0 1 2 .. 10 = 11 samples
+let cell_count = [10, 10, 10];
+
+let grid = Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, &cell_count);
 
 let sdf: Vec<f32> = generate_grid_sdf(
     &vertices,
     Topology::TriangleList(Some(&indices)),
-    &bounding_box_min,
-    &cell_radius,
-    &cell_count);
+    &grid);
 
 for x in 0..cell_count[0] {
     for y in 0..cell_count[1] {
         for z in 0..cell_count[2] {
-            let index = z + y * cell_count[2] + x * cell_count[1] * cell_count[2];
-            println!("Distance to cell [{}, {}, {}]: {}", x, y, z, sdf[index as usize]);
+            let index = grid.get_cell_idx(&[x, y, z]);
+            log::info!("Distance to cell [{}, {}, {}]: {}", x, y, z, sdf[index as usize]);
         }
     }
 }

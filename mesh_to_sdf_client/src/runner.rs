@@ -342,6 +342,10 @@ async fn run(
             {
                 // ignore event response.
                 let _ = egui_state.on_window_event(&window_loop.window, window_event);
+
+                if window_event == &winit::event::WindowEvent::CloseRequested {
+                    target.exit();
+                }
             }
 
             if SurfaceWrapper::start_condition(&event) {

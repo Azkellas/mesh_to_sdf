@@ -180,7 +180,7 @@ impl SdfRenderPass {
             rpass.set_bind_group(1, &camera.bind_group, &[]);
             rpass.set_bind_group(2, settings_bind_group, &[]);
             // vertices are computed in the shader directly to save bandwidth
-            rpass.draw(0..3, 0..sdf.cell_count);
+            rpass.draw(0..3, 0..sdf.get_cell_count());
         }
         command_encoder.pop_debug_group();
     }
