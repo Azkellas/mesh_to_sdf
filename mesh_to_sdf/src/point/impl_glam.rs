@@ -62,6 +62,11 @@ mod tests {
             let p1 = glam::Vec3::new(x, y, z);
             let p2 = glam::Vec3::new(x, y, z);
 
+            let p3: glam::Vec3 = Point::new(p1.x(), p1.y(), p1.z());
+            assert_eq!(p3.x(), x);
+            assert_eq!(p3.y(), y);
+            assert_eq!(p3.z(), z);
+
             let ap1 = [x, y, z];
             let ap2 = [x, y, z];
             assert!(Point::add(&p1, &p2).as_ref() == &ap1.add(&ap2));

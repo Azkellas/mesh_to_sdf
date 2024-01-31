@@ -87,6 +87,11 @@ mod tests {
             let p1 = nalgebra::Point3::new(x, y, z);
             let p2 = nalgebra::Point3::new(x, y, z);
 
+            let p3: nalgebra::Point3<f32> = Point::new(p1.x(), p1.y(), p1.z());
+            assert_eq!(p3.x(), x);
+            assert_eq!(p3.y(), y);
+            assert_eq!(p3.z(), z);
+
             let ap1 = [x, y, z];
             let ap2 = [x, y, z];
             assert!(cmp(Point::add(&p1, &p2), ap1.add(&ap2)));
@@ -109,6 +114,11 @@ mod tests {
             };
             let p1 = nalgebra::Vector3::new(x, y, z);
             let p2 = nalgebra::Vector3::new(x, y, z);
+
+            let p3: nalgebra::Vector3<f32> = Point::new(p1.x(), p1.y(), p1.z());
+            assert_eq!(p3.x(), x);
+            assert_eq!(p3.y(), y);
+            assert_eq!(p3.z(), z);
 
             let ap1 = [x, y, z];
             let ap2 = [x, y, z];

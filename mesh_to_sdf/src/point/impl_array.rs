@@ -27,6 +27,11 @@ mod tests {
         let p1 = [1.0, 2.0, 3.0];
         let p2 = [4.0, 5.0, 6.0];
 
+        let p3: [f32; 3] = Point::new(p1.x(), p1.y(), p1.z());
+        assert_eq!(p3.x(), 1.0);
+        assert_eq!(p3.y(), 2.0);
+        assert_eq!(p3.z(), 3.0);
+
         assert_eq!(p1.add(&p2), [5.0, 7.0, 9.0]);
         assert_eq!(p1.sub(&p2), [-3.0, -3.0, -3.0]);
         assert_eq!(p1.dot(&p2), 32.0);
