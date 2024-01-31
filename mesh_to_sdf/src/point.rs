@@ -29,6 +29,11 @@ pub trait Point: Sized + Copy + Sync + Send {
     // You are encouraged to implement them if your math library provides equivalent methods for optimization purposes,
     // but a default implementation is provided that uses new/x/y/z as a fallback.
 
+    /// Compare two points for equality.
+    fn eq(&self, other: &Self) -> bool {
+        self.x() == other.x() && self.y() == other.y() && self.z() == other.z()
+    }
+
     /// Add two points.
     fn add(&self, other: &Self) -> Self {
         Self::new(

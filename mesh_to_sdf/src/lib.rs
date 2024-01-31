@@ -150,7 +150,7 @@ fn compare_distances(a: f32, b: f32) -> std::cmp::Ordering {
         }
     } else {
         // return the closest to 0.
-        a.abs().partial_cmp(&b.abs()).unwrap()
+        a.abs().partial_cmp(&b.abs()).expect("NaN distance")
     }
 }
 /// Generate a signed distance field from a mesh.
@@ -415,4 +415,9 @@ where
     log::info!("[generate_grid_sdf] propagation steps: {}", steps);
 
     distances
+}
+
+#[cfg(test)]
+pub mod test_utils {
+    pub use super::geo::point_triangle_signed_distance;
 }
