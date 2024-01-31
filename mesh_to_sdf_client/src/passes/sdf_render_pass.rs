@@ -150,7 +150,6 @@ impl SdfRenderPass {
         // need to draw it each frame to update depth map.
         command_encoder.push_debug_group("render particles");
         {
-            // TODO: Store the render pass descriptor in the struct
             let render_pass_descriptor = wgpu::RenderPassDescriptor {
                 label: Some("SdfRenderPass::run::render_pass_descriptor"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {

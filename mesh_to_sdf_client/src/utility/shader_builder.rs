@@ -27,7 +27,6 @@ impl ShaderBuilder {
     }
 
     /// Build a shader file by importing all its dependencies.
-    /// TODO: Add #ifdef #else #endif #ifndef support.
     pub fn build(name: &str) -> Result<String> {
         Self::build_with_seen(name, &mut vec![])
     }

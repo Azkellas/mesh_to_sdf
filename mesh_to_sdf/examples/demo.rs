@@ -9,6 +9,9 @@ fn main() {
     let indices = model.indices().unwrap();
 
     // easy_gltf use cgmath::Vector3 for vertices, which is compatible with mesh_to_sdf
+    // you need to specify the cgmath feature in your Cargo.toml for mesh_to_sdf:
+    // [dependencies]
+    // mesh_to_sdf = { version = "0.1.0", features = ["cgmath"] }
     let vertices = vertices.iter().map(|v| v.position).collect_vec();
 
     // query points must be of the same type as vertices

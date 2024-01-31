@@ -32,7 +32,6 @@ impl Sdf {
         end_cell: &[f32; 3],
         cell_count: &[u32; 3],
     ) -> Result<Self> {
-        // TODO: send a grid in new.
         let ucell_count = [
             cell_count[0] as usize,
             cell_count[1] as usize,

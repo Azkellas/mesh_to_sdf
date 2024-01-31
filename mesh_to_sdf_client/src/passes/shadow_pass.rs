@@ -74,7 +74,6 @@ impl ShadowPass {
         command_encoder: &mut wgpu::CommandEncoder,
         model: &crate::pbr::model::Model,
     ) {
-        // TODO: Store the render pass descriptor in the struct
         let render_pass_descriptor = wgpu::RenderPassDescriptor {
             label: Some("ShadowPass::run::render_pass_descriptor"),
             color_attachments: &[],

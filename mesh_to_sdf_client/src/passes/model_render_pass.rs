@@ -128,7 +128,7 @@ impl ModelRenderPass {
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
-                        min_binding_size: None, // TODO: provide size
+                        min_binding_size: None,
                     },
                     count: None,
                 },
@@ -153,7 +153,6 @@ impl ModelRenderPass {
         })
     }
 
-    //TODO: this should probably be a once_cell
     pub fn create_textures_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -186,7 +185,7 @@ impl ModelRenderPass {
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
-                    min_binding_size: None, // TODO: provide size
+                    min_binding_size: None,
                 },
                 count: None,
             }],
@@ -235,7 +234,6 @@ impl ModelRenderPass {
         camera: &CameraData,
         model: &crate::pbr::model::Model,
     ) {
-        //TODO: store this in the struct
         let render_pass_descriptor = wgpu::RenderPassDescriptor {
             label: Some("ModelRenderPass::run::render_pass_descriptor"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {

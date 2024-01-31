@@ -78,7 +78,7 @@ As of now, sign is computed by checking the normals of the triangles. This is no
 
 ---
 
-TODO: Add benchmarks
+TODO: Add benchmarks against other libraries.
 
 ## `mesh_to_sdf_client` Mesh to SDF visualization client.
 

@@ -325,7 +325,6 @@ impl SdfProgram {
             bytemuck::cast_slice(&[self.settings.settings]),
         );
 
-        // TODO: do not recompute this each frame.
         let camera = &mut self.camera;
         camera.uniform.update_view_proj(&camera.camera);
         queue.write_buffer(&camera.buffer, 0, bytemuck::cast_slice(&[camera.uniform]));
@@ -720,7 +719,12 @@ impl SdfProgram {
             }
 
             if ui.button("Generate").clicked() {
-                let _ = self.load_gltf(device, queue); // TODO: don't ignore error.
+                if self.load_gltf(device, queue).is_err() {
+                    self.alert_message = Some((
+                        "Failed to load file. Make sure it is a valid gltf file.".to_owned(),
+                        web_time::Instant::now(),
+                    ));
+                }
             }
             ui.end_row();
 
@@ -920,7 +924,6 @@ impl SdfProgram {
                     },
                 );
 
-                // TODO: c/c'd from sdf.rs
                 let MinMaxResult::MinMax(xmin, xmax) = vertices.iter().map(|v| v[0]).minmax()
                 else {
                     anyhow::bail!("Bounding box is ill-defined")

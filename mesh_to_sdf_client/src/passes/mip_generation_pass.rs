@@ -67,7 +67,6 @@ impl MipGenerationPass {
         from_view: &wgpu::TextureView,
         to_view: &wgpu::TextureView,
     ) {
-        // TODO: use proper bind group layout
         let bind_group_layout = self.pipeline.get_bind_group_layout(0);
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
