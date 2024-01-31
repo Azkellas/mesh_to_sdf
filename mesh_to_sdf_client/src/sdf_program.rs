@@ -942,6 +942,10 @@ impl SdfProgram {
                 };
                 self.model_info = Some(model_info);
 
+                // Adapt surface width to the size of the model.
+                self.settings.settings.surface_width =
+                    (xmax - xmin).max(ymax - ymin).max(zmax - zmin) / 100.0;
+
                 let start_cell = [xmin, ymin, zmin];
                 let end_cell = [xmax, ymax, zmax];
 
