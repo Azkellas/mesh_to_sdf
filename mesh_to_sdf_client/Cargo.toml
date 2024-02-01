@@ -12,7 +12,7 @@ keywords = ["mesh", "sdf", "signed distance field", "distance field", "3d"]
 [dependencies]
 mesh_to_sdf = { path = "../mesh_to_sdf", version="0.1.0", features = ["glam"] }
 egui = "0.25.0"
-egui-gizmo = "0.14.1"
+egui-gizmo = "0.15.0"
 wgpu = { version = "0.18.0", default-features = false }
 winit_input_helper = "0.15.3"
 bytemuck = { version = "1.14.0", features = ["derive"] }
