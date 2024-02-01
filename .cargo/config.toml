@@ -1,7 +1,7 @@
 # Required to avoid a linker error on Windows when building the dylib.
 [target.x86_64-pc-windows-msvc]
-linker = "rust-lld.exe"
-rustflags = ["-Zshare-generics=n"]
+# linker = "rust-lld.exe"
+# rustflags = ["-Zshare-generics=n"]
 
 # Uncomment this to enable unstable APIs in web_sys when targetting wasm.
 [target.'cfg(target_family = "wasm")']
