@@ -822,12 +822,12 @@ dependencies = [
 
 [[package]]
 name = "egui-gizmo"
-version = "0.14.1"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cff743d17ff4d032f9ab3f5c58b6d7c4983ceb1dfa45a20c9f0eaf2b30025444"
+checksum = "ca7e40a59693dfac6232ab3d813bc22619b2f8e98a0e809fcadff9e9f1ff108e"
 dependencies = [
  "egui",
- "glam 0.24.2",
+ "glam",
  "mint",
 ]
 
@@ -1203,15 +1203,6 @@ dependencies = [
  "khronos_api",
  "log",
  "xml-rs",
-]
-
-[[package]]
-name = "glam"
-version = "0.24.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5418c17512bdf42730f9032c74e1ae39afc408745ebb2acf72fbc4691c17945"
-dependencies = [
- "mint",
 ]
 
 [[package]]
@@ -1769,7 +1760,7 @@ dependencies = [
  "easy-gltf",
  "env_logger",
  "float-cmp",
- "glam 0.25.0",
+ "glam",
  "itertools 0.12.1",
  "log",
  "mint",
@@ -1795,7 +1786,7 @@ dependencies = [
  "egui-winit",
  "env_logger",
  "float-cmp",
- "glam 0.25.0",
+ "glam",
  "image",
  "itertools 0.12.1",
  "log",
