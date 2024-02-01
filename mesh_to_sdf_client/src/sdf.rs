@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use wgpu::util::DeviceExt;
 
 use anyhow::Result;
@@ -19,6 +20,8 @@ pub struct Sdf {
     pub uniforms_buffer: wgpu::Buffer,
     pub data: Vec<f32>,
     pub data_buffer: wgpu::Buffer,
+    pub ordered_indices: Vec<u32>,
+    pub ordered_buffer: wgpu::Buffer,
 
     pub bind_group: wgpu::BindGroup,
 }
@@ -44,6 +47,13 @@ impl Sdf {
             &grid,
         );
 
+        // sort cells by their (absolute) distance to surface.
+        // used in the voxel render pass to only draw valid cells.
+        let ordered_indices = (0..data.len())
+            .sorted_by(|i, j| data[*i].abs().partial_cmp(&data[*j].abs()).unwrap())
+            .map(|i| i as u32)
+            .collect_vec();
+
         let cell_size = grid.get_cell_size();
         let uniforms = SdfUniforms {
             start: [start_cell[0], start_cell[1], start_cell[2], 0.0],
@@ -64,6 +74,12 @@ impl Sdf {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
+        let ordered_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Sdf Ordered Indices Buffer"),
+            contents: bytemuck::cast_slice(&ordered_indices),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
         let bind_group_layout = SdfRenderPass::get_bind_group_layout(device);
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -78,6 +94,10 @@ impl Sdf {
                     binding: 1,
                     resource: data_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: ordered_buffer.as_entire_binding(),
+                },
             ],
         });
 
@@ -86,6 +106,8 @@ impl Sdf {
             uniforms_buffer,
             data,
             data_buffer,
+            ordered_indices,
+            ordered_buffer,
             bind_group,
         })
     }

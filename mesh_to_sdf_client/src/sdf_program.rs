@@ -53,23 +53,23 @@ struct Parameters {
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct Settings {
+pub struct Settings {
     // TODO: remove padding?
-    positive_color: [f32; 3],
-    _positive_padding: f32,
-    negative_color: [f32; 3],
-    _negative_padding: f32,
-    surface_color: [f32; 3],
-    _surface_padding: f32,
-    positives_power: f32,
-    negatives_power: f32,
-    surface_power: f32,
-    surface_width: f32,
-    point_size: f32,
-    _padding: [f32; 3],
+    pub positive_color: [f32; 3],
+    pub _positive_padding: f32,
+    pub negative_color: [f32; 3],
+    pub _negative_padding: f32,
+    pub surface_color: [f32; 3],
+    pub _surface_padding: f32,
+    pub positives_power: f32,
+    pub negatives_power: f32,
+    pub surface_power: f32,
+    pub surface_width: f32,
+    pub point_size: f32,
+    pub _padding: [f32; 3],
 }
 
-struct SettingsData {
+pub struct SettingsData {
     pub settings: Settings,
     pub buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
@@ -912,7 +912,7 @@ impl SdfProgram {
                 &self.depth_map,
                 &self.camera,
                 self.sdf.as_ref().unwrap(),
-                &self.settings.bind_group,
+                &self.settings,
             );
 
             queue.submit(Some(command_encoder.finish()));

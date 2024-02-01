@@ -7,6 +7,7 @@ struct SdfUniforms {
 }
 @group(0) @binding(0) var<uniform> uniforms : SdfUniforms;
 @group(0) @binding(1) var<storage, read> sdf : array<f32>;
+@group(0) @binding(2) var<storage, read> ordered_indices : array<u32>;
 
 // Vertex shader
 struct CameraUniform {
@@ -85,7 +86,9 @@ fn main_vs(
     // compute cell world position
     // index was generated via for x in 0..cell_x { for y in 0..cell_y { for z in 0..cell_z { ... } } }
     // so index is x*cell_y*cell_z + y*cell_z + z
-    var index = in.instance_index;
+    var index = ordered_indices[in.instance_index];
+    let distance = sdf[index];
+
     let cell_z = index % cell_count.z;
     index /= cell_count.z;
     let cell_y = index % cell_count.y;
@@ -99,7 +102,6 @@ fn main_vs(
     // cell view position 
     let svposition = camera.view_proj * vec4<f32>(world_pos, 1.0);
 
-    let distance = sdf[in.instance_index];
 
     // output
     var out: VertexOutput;

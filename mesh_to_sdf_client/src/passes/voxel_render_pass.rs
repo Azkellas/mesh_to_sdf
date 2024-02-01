@@ -5,6 +5,7 @@ use crate::pbr::mesh::primitives::create_box;
 use crate::pbr::mesh::{Mesh, MeshVertex};
 use crate::pbr::shadow_map;
 use crate::sdf::{Sdf, SdfUniforms};
+use crate::sdf_program::SettingsData;
 use crate::texture::Texture;
 use crate::utility::shader_builder::ShaderBuilder;
 
@@ -98,6 +99,16 @@ impl VoxelRenderPass {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
                     visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: true },
@@ -230,7 +241,7 @@ impl VoxelRenderPass {
         depth_map: &Texture,
         camera: &CameraData,
         sdf: &Sdf,
-        settings_bind_group: &wgpu::BindGroup,
+        settings: &SettingsData,
     ) {
         // need to draw it each frame to update depth map.
         command_encoder.push_debug_group("render particles");
@@ -257,16 +268,30 @@ impl VoxelRenderPass {
                 occlusion_query_set: None,
             };
 
+            // find the last index that is less than the surface width
+            // all indices before this index are valid and should be drawn.
+            // note: if several cells are at exactly the surface width, we might miss some.
+            let index = sdf.ordered_indices.binary_search_by(|i| {
+                sdf.data[*i as usize]
+                    .abs()
+                    .partial_cmp(&settings.settings.surface_width.abs())
+                    .unwrap()
+            });
+            let index = match index {
+                Ok(i) | Err(i) => i,
+            };
+            println!("Index: {}", index);
+
             // render pass
             let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
             rpass.set_pipeline(&self.render_pipeline);
             rpass.set_bind_group(0, &sdf.bind_group, &[]);
             rpass.set_bind_group(1, &camera.bind_group, &[]);
-            rpass.set_bind_group(2, settings_bind_group, &[]);
+            rpass.set_bind_group(2, &settings.bind_group, &[]);
             rpass.set_bind_group(3, self.shadow_bind_group.as_ref().unwrap(), &[]);
             rpass.set_vertex_buffer(0, self.voxel.vertex_buffer.slice(..));
             rpass.set_index_buffer(self.voxel.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            rpass.draw_indexed(0..self.voxel.index_count, 0, 0..sdf.get_cell_count());
+            rpass.draw_indexed(0..self.voxel.index_count, 0, 0..(index as u32));
         }
         command_encoder.pop_debug_group();
     }
