@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::pbr::model::ModelVertex;
+use crate::pbr::mesh::MeshVertex;
 use crate::texture::Texture;
 use crate::utility::shader_builder::ShaderBuilder;
 
@@ -40,7 +40,7 @@ impl ShadowPass {
                 vertex: wgpu::VertexState {
                     module: &draw_shader,
                     entry_point: "main_vs",
-                    buffers: &[ModelVertex::desc()],
+                    buffers: &[MeshVertex::desc()],
                 },
                 fragment: None,
                 primitive: wgpu::PrimitiveState::default(),
@@ -93,8 +93,8 @@ impl ShadowPass {
         rpass.set_pipeline(&self.render_pipeline);
         rpass.set_bind_group(0, &model.transform_bind_group, &[]);
         rpass.set_bind_group(1, &self.map.light.bind_group, &[]);
-        rpass.set_vertex_buffer(0, model.vertex_buffer.slice(..));
-        rpass.set_index_buffer(model.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-        rpass.draw_indexed(0..model.index_count, 0, 0..1);
+        rpass.set_vertex_buffer(0, model.mesh.vertex_buffer.slice(..));
+        rpass.set_index_buffer(model.mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+        rpass.draw_indexed(0..model.mesh.index_count, 0, 0..1);
     }
 }

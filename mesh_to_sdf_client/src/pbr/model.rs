@@ -3,38 +3,13 @@ use wgpu::util::DeviceExt;
 
 use crate::texture::Texture;
 
+use super::mesh::{Mesh, MeshVertex};
 use crate::passes::model_render_pass::ModelRenderPass;
-
-#[repr(C)]
-#[derive(Default, Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct ModelVertex {
-    pub position: [f32; 3],
-    pub normal: [f32; 3],
-    pub tex_coords: [f32; 2],
-}
-
-impl ModelVertex {
-    const ATTRIBUTES: [wgpu::VertexAttribute; 3] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2];
-
-    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: 8 * 4,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBUTES,
-        }
-    }
-}
 
 pub struct Model {
     pub name: Option<String>,
-    pub vertices: Vec<ModelVertex>,
-    pub indices: Vec<u32>,
 
-    pub vertex_buffer: wgpu::Buffer,
-    pub index_buffer: wgpu::Buffer,
-
-    pub index_count: u32,
+    pub mesh: Mesh,
 
     // TODO Material struct.
     pub albedo: Texture,
@@ -53,7 +28,7 @@ impl Model {
         let vertices = model
             .vertices()
             .iter()
-            .map(|v| ModelVertex {
+            .map(|v| MeshVertex {
                 position: [v.position.x, v.position.y, v.position.z],
                 normal: [v.normal.x, v.normal.y, v.normal.z],
                 tex_coords: [v.tex_coords.x, v.tex_coords.y],
@@ -62,19 +37,7 @@ impl Model {
 
         println!("model: {:?}", model.mesh_name());
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(&indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
-        let index_count = indices.len() as u32;
+        let mesh = Mesh::new(device, vertices, indices);
 
         // If no albedo is present, render as grey.
         let grey_albedo: image::ImageBuffer<image::Rgba<u8>, std::vec::Vec<u8>> =
@@ -132,11 +95,7 @@ impl Model {
 
         Self {
             name: model.mesh_name().map(|x| x.to_owned()),
-            vertices,
-            indices,
-            vertex_buffer,
-            index_buffer,
-            index_count,
+            mesh,
             albedo,
             transform,
             transform_buffer,

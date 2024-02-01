@@ -86,7 +86,7 @@ fn closest_point_triangle<V: Point>(p: &V, a: &V, b: &V, c: &V) -> V {
         return *b;
     }
 
-    let cp = p.sub(&c);
+    let cp = p.sub(c);
     let d5 = ab.dot(&cp);
     let d6 = ac.dot(&cp);
     if d6 >= 0.0 && d5 <= d6 {

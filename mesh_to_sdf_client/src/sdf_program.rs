@@ -38,6 +38,7 @@ enum RenderMode {
     Model,
     Sdf,
     ModelAndSdf,
+    Voxels,
 }
 
 #[derive(Debug, Clone)]
@@ -119,6 +120,7 @@ struct Passes {
     mip_gen: crate::passes::mip_generation_pass::MipGenerationPass,
     model: crate::passes::model_render_pass::ModelRenderPass,
     shadow: crate::passes::shadow_pass::ShadowPass,
+    voxels: crate::passes::voxel_render_pass::VoxelRenderPass,
 }
 
 pub struct SdfProgram {
@@ -238,11 +240,20 @@ impl SdfProgram {
             &shadow_pass.map,
         )?;
 
+        let voxels = crate::passes::voxel_render_pass::VoxelRenderPass::new(
+            device,
+            swapchain_format,
+            &camera,
+            &settings.bind_group_layout,
+            &shadow_pass.map,
+        )?;
+
         let pass = Passes {
             sdf: sdf_pass,
             mip_gen: mip_gen_pass,
             model: model_render_pass,
             shadow: shadow_pass,
+            voxels,
         };
 
         let parameters = Parameters {
@@ -288,6 +299,13 @@ impl SdfProgram {
             .update_pipeline(device, swapchain_format, &self.camera)?;
 
         self.pass.sdf.update_pipeline(
+            device,
+            swapchain_format,
+            &self.camera,
+            &self.settings.bind_group_layout,
+        )?;
+
+        self.pass.voxels.update_pipeline(
             device,
             swapchain_format,
             &self.camera,
@@ -353,6 +371,10 @@ impl SdfProgram {
             ui.separator();
             ui.end_row();
 
+            ui.label(std::format!("Frame rate: {}", self.frame_rate.get()));
+            ui.separator();
+            ui.end_row();
+
             ui.label("Render Mode");
             egui::ComboBox::from_label("")
                 .selected_text(format!("{:?}", self.parameters.render_mode))
@@ -367,6 +389,11 @@ impl SdfProgram {
                         &mut self.parameters.render_mode,
                         RenderMode::ModelAndSdf,
                         "Model and SDF",
+                    );
+                    ui.selectable_value(
+                        &mut self.parameters.render_mode,
+                        RenderMode::Voxels,
+                        "Voxels",
                     );
                 });
             ui.end_row();
@@ -686,7 +713,7 @@ impl SdfProgram {
             ui.separator();
             ui.end_row();
 
-            if self.parameters.enable_shadows {
+            {
                 ui.label("Light");
                 ui.end_row();
                 ui.add(
@@ -719,6 +746,7 @@ impl SdfProgram {
             }
 
             if ui.button("Generate").clicked() {
+                #[allow(clippy::collapsible_if)]
                 if self.load_gltf(device, queue).is_err() {
                     self.alert_message = Some((
                         "Failed to load file. Make sure it is a valid gltf file.".to_owned(),
@@ -838,6 +866,23 @@ impl SdfProgram {
 
             queue.submit(Some(command_encoder.finish()));
         }
+
+        // render voxels
+        if self.sdf.is_some() && self.parameters.render_mode == RenderMode::Voxels {
+            let mut command_encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+            self.pass.voxels.run(
+                &mut command_encoder,
+                view,
+                &self.depth_map,
+                &self.camera,
+                self.sdf.as_ref().unwrap(),
+                &self.settings.bind_group,
+            );
+
+            queue.submit(Some(command_encoder.finish()));
+        }
     }
 
     pub fn get_camera(&mut self) -> Option<&mut crate::camera_control::CameraLookAt> {
@@ -918,8 +963,8 @@ impl SdfProgram {
                     |(mut vertices, mut indices), model| {
                         // we need to offset the indices by the number of vertices we already have.
                         let len = vertices.len();
-                        vertices.extend(model.vertices.iter().map(|v| v.position));
-                        indices.extend(model.indices.iter().map(|i| *i + len as u32));
+                        vertices.extend(model.mesh.vertices.iter().map(|v| v.position));
+                        indices.extend(model.mesh.indices.iter().map(|i| *i + len as u32));
                         (vertices, indices)
                     },
                 );
