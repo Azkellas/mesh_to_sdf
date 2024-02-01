@@ -46,6 +46,7 @@ struct Parameters {
     file_name: Option<String>,
     gizmo_mode: GizmoMode,
     cell_count: [u32; 3],
+    bounding_box_extent: f32,
     render_mode: RenderMode,
     enable_shadows: bool,
 }
@@ -262,6 +263,7 @@ impl SdfProgram {
             cell_count: [16, 16, 16],
             render_mode: RenderMode::Sdf,
             enable_shadows: false, // deactivating shadows for now.
+            bounding_box_extent: 1.0,
         };
 
         Ok(SdfProgram {
@@ -533,7 +535,7 @@ impl SdfProgram {
                 ("Positive power", 0.0..=10.0),
                 ("Negative power", 0.0..=10.0),
                 ("Surface power", 0.0..=10.0),
-                ("Surface width", 0.001..=0.1),
+                ("Surface width", 0.0001..=0.1),
                 ("Point size", 0.1..=1.),
             ] {
                 let value = match label {
@@ -714,31 +716,63 @@ impl SdfProgram {
             ui.end_row();
 
             {
+                ui.label("Bounding Box Extent");
+                let mut new_value = self.parameters.bounding_box_extent;
+                ui.add(egui::Slider::new(&mut new_value, 1.0..=3.0));
+
+                if new_value != self.parameters.bounding_box_extent {
+                    // Save old state.
+                    let old_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
+
+                    self.parameters.bounding_box_extent = new_value;
+
+                    // Get new state.
+                    let new_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
+
+                    // Push with the old and new state.
+                    self.command_stack.push(
+                        "Bounding Box Extent",
+                        command_stack::Command {
+                            old_state,
+                            new_state,
+                        },
+                    );
+                }
+            }
+            ui.end_row();
+
+            ui.separator();
+            ui.end_row();
+
+            {
                 ui.label("Light");
                 ui.end_row();
-                ui.add(
-                    egui::Slider::new(
-                        &mut self.pass.shadow.map.light.camera.look_at.distance,
-                        0.0..=30.0,
-                    )
-                    .text("Distance"),
-                );
+
+                ui.label("Distance");
+                ui.add(egui::Slider::new(
+                    &mut self.pass.shadow.map.light.camera.look_at.distance,
+                    0.0..=30.0,
+                ));
                 ui.end_row();
-                ui.add(
-                    egui::Slider::new(
-                        &mut self.pass.shadow.map.light.camera.look_at.longitude,
-                        0.0..=std::f32::consts::TAU,
-                    )
-                    .text("Longitude"),
-                );
+
+                ui.label("Longitude");
+                ui.add(egui::Slider::new(
+                    &mut self.pass.shadow.map.light.camera.look_at.longitude,
+                    0.0..=std::f32::consts::TAU,
+                ));
                 ui.end_row();
-                ui.add(
-                    egui::Slider::new(
-                        &mut self.pass.shadow.map.light.camera.look_at.latitude,
-                        -std::f32::consts::FRAC_PI_2..=std::f32::consts::FRAC_PI_2,
-                    )
-                    .text("Latitude"),
-                );
+
+                ui.label("Latitude");
+                ui.add(egui::Slider::new(
+                    &mut self.pass.shadow.map.light.camera.look_at.latitude,
+                    -std::f32::consts::FRAC_PI_2..=std::f32::consts::FRAC_PI_2,
+                ));
                 ui.end_row();
 
                 ui.separator();
@@ -989,6 +1023,24 @@ impl SdfProgram {
                     bounding_box: [xmin, ymin, zmin, xmax, ymax, zmax],
                 };
                 self.model_info = Some(model_info);
+
+                let middle = [
+                    (xmin + xmax) / 2.0,
+                    (ymin + ymax) / 2.0,
+                    (zmin + zmax) / 2.0,
+                ];
+                let half_size = [
+                    (xmax - xmin) / 2.0,
+                    (ymax - ymin) / 2.0,
+                    (zmax - zmin) / 2.0,
+                ];
+
+                let xmin = middle[0] - half_size[0] * self.parameters.bounding_box_extent;
+                let xmax = middle[0] + half_size[0] * self.parameters.bounding_box_extent;
+                let ymin = middle[1] - half_size[1] * self.parameters.bounding_box_extent;
+                let ymax = middle[1] + half_size[1] * self.parameters.bounding_box_extent;
+                let zmin = middle[2] - half_size[2] * self.parameters.bounding_box_extent;
+                let zmax = middle[2] + half_size[2] * self.parameters.bounding_box_extent;
 
                 // Adapt surface width to the size of the model.
                 self.settings.settings.surface_width =
