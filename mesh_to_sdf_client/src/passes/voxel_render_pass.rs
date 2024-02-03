@@ -280,7 +280,6 @@ impl VoxelRenderPass {
             let index = match index {
                 Ok(i) | Err(i) => i,
             };
-            println!("Index: {}", index);
 
             // render pass
             let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);

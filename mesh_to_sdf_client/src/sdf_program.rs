@@ -138,6 +138,9 @@ pub struct SdfProgram {
     last_run_info: Option<LastRunInfo>,
     command_stack: command_stack::CommandStack,
     alert_message: Option<(String, web_time::Instant)>,
+
+    sdf_vertices: Vec<[f32; 3]>,
+    sdf_indices: Vec<u32>,
 }
 
 impl SdfProgram {
@@ -280,6 +283,9 @@ impl SdfProgram {
             last_run_info: None,
             command_stack: command_stack::CommandStack::new(20),
             alert_message: None,
+
+            sdf_vertices: vec![],
+            sdf_indices: vec![],
         })
     }
 
@@ -781,9 +787,9 @@ impl SdfProgram {
 
             if ui.button("Generate").clicked() {
                 #[allow(clippy::collapsible_if)]
-                if self.load_gltf(device, queue).is_err() {
+                if self.generate_sdf(device).is_err() {
                     self.alert_message = Some((
-                        "Failed to load file. Make sure it is a valid gltf file.".to_owned(),
+                        "Failed to generate sdf.".to_owned(),
                         web_time::Instant::now(),
                     ));
                 }
@@ -982,12 +988,9 @@ impl SdfProgram {
     }
 
     fn load_gltf(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Result<()> {
-        // TODO: we don't need to load the gltf file each time we generate the sdf.
         match self.parameters.file_name {
             None => anyhow::bail!("No file to load"),
             Some(ref path) => {
-                let start = web_time::Instant::now();
-
                 // a gltf scene can contain multiple models.
                 // we merge them in a single sdf.
                 self.models = gltf::load_scene(device, queue, path)?;
@@ -1024,48 +1027,59 @@ impl SdfProgram {
                 };
                 self.model_info = Some(model_info);
 
-                let middle = [
-                    (xmin + xmax) / 2.0,
-                    (ymin + ymax) / 2.0,
-                    (zmin + zmax) / 2.0,
-                ];
-                let half_size = [
-                    (xmax - xmin) / 2.0,
-                    (ymax - ymin) / 2.0,
-                    (zmax - zmin) / 2.0,
-                ];
-
-                let xmin = middle[0] - half_size[0] * self.parameters.bounding_box_extent;
-                let xmax = middle[0] + half_size[0] * self.parameters.bounding_box_extent;
-                let ymin = middle[1] - half_size[1] * self.parameters.bounding_box_extent;
-                let ymax = middle[1] + half_size[1] * self.parameters.bounding_box_extent;
-                let zmin = middle[2] - half_size[2] * self.parameters.bounding_box_extent;
-                let zmax = middle[2] + half_size[2] * self.parameters.bounding_box_extent;
+                self.sdf_vertices = vertices;
+                self.sdf_indices = indices;
 
                 // Adapt surface width to the size of the model.
                 self.settings.settings.surface_width =
                     (xmax - xmin).max(ymax - ymin).max(zmax - zmin) / 100.0;
 
-                let start_cell = [xmin, ymin, zmin];
-                let end_cell = [xmax, ymax, zmax];
-
-                self.sdf = Sdf::new(
-                    device,
-                    &vertices,
-                    &indices,
-                    &start_cell,
-                    &end_cell,
-                    &self.parameters.cell_count,
-                )
-                .ok();
-
-                self.last_run_info = Some(LastRunInfo {
-                    time: start.elapsed().as_secs_f32() * 1000.0,
-                    size: self.parameters.cell_count,
-                });
-
-                Ok(())
+                self.generate_sdf(device)
             }
         }
+    }
+
+    fn generate_sdf(&mut self, device: &wgpu::Device) -> Result<()> {
+        let Some(model_info) = &self.model_info else {
+            anyhow::bail!("No model to generate SDF from")
+        };
+
+        let start = web_time::Instant::now();
+        let middle = [
+            (model_info.bounding_box[0] + model_info.bounding_box[3]) / 2.0,
+            (model_info.bounding_box[1] + model_info.bounding_box[4]) / 2.0,
+            (model_info.bounding_box[2] + model_info.bounding_box[5]) / 2.0,
+        ];
+        let half_size = [
+            (model_info.bounding_box[3] - model_info.bounding_box[0]) / 2.0,
+            (model_info.bounding_box[4] - model_info.bounding_box[1]) / 2.0,
+            (model_info.bounding_box[5] - model_info.bounding_box[2]) / 2.0,
+        ];
+
+        let xmin = middle[0] - half_size[0] * self.parameters.bounding_box_extent;
+        let xmax = middle[0] + half_size[0] * self.parameters.bounding_box_extent;
+        let ymin = middle[1] - half_size[1] * self.parameters.bounding_box_extent;
+        let ymax = middle[1] + half_size[1] * self.parameters.bounding_box_extent;
+        let zmin = middle[2] - half_size[2] * self.parameters.bounding_box_extent;
+        let zmax = middle[2] + half_size[2] * self.parameters.bounding_box_extent;
+
+        let start_cell = [xmin, ymin, zmin];
+        let end_cell = [xmax, ymax, zmax];
+
+        self.sdf = Some(Sdf::new(
+            device,
+            &self.sdf_vertices,
+            &self.sdf_indices,
+            &start_cell,
+            &end_cell,
+            &self.parameters.cell_count,
+        )?);
+
+        self.last_run_info = Some(LastRunInfo {
+            time: start.elapsed().as_secs_f32() * 1000.0,
+            size: self.parameters.cell_count,
+        });
+
+        Ok(())
     }
 }
