@@ -39,6 +39,27 @@ enum RenderMode {
     Sdf,
     ModelAndSdf,
     Voxels,
+    Raymarch,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum RaymarchMode {
+    Snap,
+    Trilinear,
+    Tetrahedral,
+}
+
+impl TryFrom<u32> for RaymarchMode {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(RaymarchMode::Snap),
+            1 => Ok(RaymarchMode::Trilinear),
+            2 => Ok(RaymarchMode::Tetrahedral),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -66,7 +87,8 @@ pub struct Settings {
     pub surface_power: f32,
     pub surface_width: f32,
     pub point_size: f32,
-    pub _padding: [f32; 3],
+    pub raymarch_mode: u32,
+    pub _padding: [f32; 2],
 }
 
 pub struct SettingsData {
@@ -122,6 +144,7 @@ struct Passes {
     model: crate::passes::model_render_pass::ModelRenderPass,
     shadow: crate::passes::shadow_pass::ShadowPass,
     voxels: crate::passes::voxel_render_pass::VoxelRenderPass,
+    raymarch: crate::passes::raymarch_pass::RaymarchRenderPass,
 }
 
 pub struct SdfProgram {
@@ -220,7 +243,8 @@ impl SdfProgram {
                 surface_power: 1.0,
                 surface_width: 0.02,
                 point_size: 0.3,
-                _padding: [0.0; 3],
+                raymarch_mode: RaymarchMode::Trilinear as u32,
+                _padding: [0.0; 2],
             },
         );
 
@@ -252,12 +276,21 @@ impl SdfProgram {
             &shadow_pass.map,
         )?;
 
+        let raymarch = crate::passes::raymarch_pass::RaymarchRenderPass::new(
+            device,
+            swapchain_format,
+            &camera,
+            &settings.bind_group_layout,
+            &shadow_pass.map,
+        )?;
+
         let pass = Passes {
             sdf: sdf_pass,
             mip_gen: mip_gen_pass,
             model: model_render_pass,
             shadow: shadow_pass,
             voxels,
+            raymarch,
         };
 
         let parameters = Parameters {
@@ -314,6 +347,13 @@ impl SdfProgram {
         )?;
 
         self.pass.voxels.update_pipeline(
+            device,
+            swapchain_format,
+            &self.camera,
+            &self.settings.bind_group_layout,
+        )?;
+
+        self.pass.raymarch.update_pipeline(
             device,
             swapchain_format,
             &self.camera,
@@ -384,7 +424,7 @@ impl SdfProgram {
             ui.end_row();
 
             ui.label("Render Mode");
-            egui::ComboBox::from_label("")
+            egui::ComboBox::from_id_source("render_mode")
                 .selected_text(format!("{:?}", self.parameters.render_mode))
                 .show_ui(ui, |ui| {
                     ui.selectable_value(
@@ -402,6 +442,11 @@ impl SdfProgram {
                         &mut self.parameters.render_mode,
                         RenderMode::Voxels,
                         "Voxels",
+                    );
+                    ui.selectable_value(
+                        &mut self.parameters.render_mode,
+                        RenderMode::Raymarch,
+                        "Raymarch",
                     );
                 });
             ui.end_row();
@@ -756,6 +801,33 @@ impl SdfProgram {
             ui.separator();
             ui.end_row();
 
+            ui.label("Raymarch Mode");
+            egui::ComboBox::from_id_source("raymarch_mode")
+                .selected_text(format!(
+                    "{:?}",
+                    RaymarchMode::try_from(self.settings.settings.raymarch_mode).unwrap()
+                ))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.settings.settings.raymarch_mode,
+                        RaymarchMode::Snap as _,
+                        "Snap",
+                    );
+                    ui.selectable_value(
+                        &mut self.settings.settings.raymarch_mode,
+                        RaymarchMode::Trilinear as _,
+                        "Trilinear",
+                    );
+                    ui.selectable_value(
+                        &mut self.settings.settings.raymarch_mode,
+                        RaymarchMode::Tetrahedral as _,
+                        "Tetrahedral",
+                    );
+                });
+
+            ui.separator();
+            ui.end_row();
+
             {
                 ui.label("Light");
                 ui.end_row();
@@ -916,6 +988,22 @@ impl SdfProgram {
                 &mut command_encoder,
                 view,
                 &self.depth_map,
+                &self.camera,
+                self.sdf.as_ref().unwrap(),
+                &self.settings,
+            );
+
+            queue.submit(Some(command_encoder.finish()));
+        }
+
+        // render raymarch
+        if self.sdf.is_some() && self.parameters.render_mode == RenderMode::Raymarch {
+            let mut command_encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+            self.pass.raymarch.run(
+                &mut command_encoder,
+                view,
                 &self.camera,
                 self.sdf.as_ref().unwrap(),
                 &self.settings,

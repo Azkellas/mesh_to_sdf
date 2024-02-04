@@ -30,6 +30,7 @@ struct VisUniforms {
     surface_power: f32,
     surface_width: f32,
     point_size: f32,
+    raymarch_mode: u32,
 };
 @group(2) @binding(0) var<uniform> vis_uniforms: VisUniforms;
 

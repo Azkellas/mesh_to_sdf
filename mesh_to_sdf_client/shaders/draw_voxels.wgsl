@@ -31,6 +31,7 @@ struct VisUniforms {
     surface_power: f32,
     surface_width: f32,
     point_size: f32,
+    raymarch_mode: u32,
 };
 @group(2) @binding(0) var<uniform> vis_uniforms: VisUniforms;
 
@@ -127,21 +128,13 @@ fn main_fs(in: VertexOutput) -> @location(0) vec4<f32> {
     let ambiant = 0.2;
     let diffuse = max(0.0, dot(in.normal.xyz, light_dir));
 
-    var shadow_uv = shadow_camera.view_proj * vec4<f32>(in.position.xyz, 1.0);
-    shadow_uv /= shadow_uv.w;
-    shadow_uv.x = shadow_uv.x * 0.5 + 0.5;
-    shadow_uv.y = shadow_uv.y * -0.5 + 0.5;
-    var depth = shadow_uv.z;
-
-    let threshold = depth * (1.05);
-
     var diffuse_strength = 0.5;
 
     let view_dir = normalize(camera.eye.xyz - in.position.xyz);
     let half_dir = normalize(view_dir + light_dir);
     let specular = max(0.0, dot(in.normal.xyz, half_dir));
 
-    let brightness = ambiant + (diffuse + specular) * diffuse_strength;
+    let brightness = ambiant + (diffuse + 0.5 * specular) * diffuse_strength;
 
     // arbitrary attenuation
     color.r *= exp(-1.8 * (1.0 - brightness));
