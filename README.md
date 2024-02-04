@@ -100,7 +100,7 @@ This project is still in its early stages. Here is a list of things that are pla
 - [ ] [lib] Tests/Benchmarks/Examples
 - [ ] [lib] Methods to sample the surface
 - [x] [client] Display meshes
-- [ ] [client] Raymarch the surface
+- [x] [client] Raymarch the surface
 - [x] [client] Voxelize the mesh
 - [x] [client] Undo/Redo
 - [ ] [client] CLI

@@ -109,24 +109,26 @@ fn sdf_grid(position: vec3<f32>) -> f32 {
             distance = get_distance(cell_index);
         }
         case MODE_TRILINEAR: {
-            // ==================================
+            // 0       0'       1      1'      2
+            // ================================== 2
             // ||      |       ||      |       ||
             // ||      |       ||      |       ||
-            // ||------+---------------+---------
+            // ||------+---------------+--------- 1'
             // ||      |       ||      |       ||
             // ||      |       ||      |       ||
-            // ==================================
+            // ================================== 1
             // ||      |   +p  ||      |       ||
             // ||      |       ||      |       ||
-            // ||------+---------------+---------
+            // ||------+---------------+--------- 0'
             // ||      |cell   ||      |       ||
             // ||      |center ||      |       ||
-            // ==================================
+            // ================================== 0
 
-            // instead of snapping to the ==|| grid
-            // we snap to the -| grid.
+
+            // instead of snapping to the =|| sdf grid (0, 1 2) (cell centered)
+            // we snap to the -| dual grid. (0', 1', 2') (vertex centered)
             // so the cell centers are the boundaries of the new cells.
-            // then we can use trilinear interpolation to get the distance.
+            // then we can use interpolation on this grid to get the distance.
             // snap the position on the grid
             let cell_size = uniforms.cell_size.xyz;
             let cell_count = uniforms.cell_count.xyz;
