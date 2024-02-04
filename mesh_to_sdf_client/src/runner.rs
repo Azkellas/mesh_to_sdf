@@ -155,10 +155,10 @@ impl SurfaceWrapper {
         };
 
         // Comment to disable freerun and enable v-sync. Note that this is only valid in native.
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            config.present_mode = wgpu::PresentMode::Immediate;
-        }
+        // #[cfg(not(target_arch = "wasm32"))]
+        // {
+        //     config.present_mode = wgpu::PresentMode::Immediate;
+        // }
 
         surface.configure(&context.device, &config);
         self.config = Some(config);
