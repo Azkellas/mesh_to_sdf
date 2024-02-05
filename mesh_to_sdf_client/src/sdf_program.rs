@@ -47,6 +47,7 @@ enum RaymarchMode {
     Snap,
     Trilinear,
     Tetrahedral,
+    SnapStylized,
 }
 
 impl TryFrom<u32> for RaymarchMode {
@@ -57,6 +58,7 @@ impl TryFrom<u32> for RaymarchMode {
             0 => Ok(RaymarchMode::Snap),
             1 => Ok(RaymarchMode::Trilinear),
             2 => Ok(RaymarchMode::Tetrahedral),
+            3 => Ok(RaymarchMode::SnapStylized),
             _ => Err(()),
         }
     }
@@ -299,7 +301,7 @@ impl SdfProgram {
             cell_count: [16, 16, 16],
             render_mode: RenderMode::Sdf,
             enable_shadows: false, // deactivating shadows for now.
-            bounding_box_extent: 1.0,
+            bounding_box_extent: 1.1,
         };
 
         Ok(SdfProgram {

@@ -38,8 +38,13 @@ struct VisUniforms {
 const MODE_SNAP: u32 = 0u;
 const MODE_TRILINEAR: u32 = 1u;
 const MODE_TETRAHEDRAL: u32 = 2u;
+const MODE_SNAP_STYLIZED: u32 = 3u;
 
 @group(2) @binding(0) var<uniform> vis_uniforms: VisUniforms;
+
+@group(3) @binding(0) var<uniform> shadow_camera: CameraUniform;
+@group(3) @binding(1) var shadow_map: texture_2d<f32>;
+@group(3) @binding(2) var shadow_sampler: sampler;
 
 
 struct VertexOutput {
@@ -100,7 +105,7 @@ fn sdf_grid(position: vec3<f32>) -> f32 {
     var distance = 100.0;
 
     switch vis_uniforms.raymarch_mode {
-        case MODE_SNAP: {
+        case MODE_SNAP, MODE_SNAP_STYLIZED: {
             // snap the position on the grid
             let cell_size = uniforms.cell_size.xyz;
             let cell_count = uniforms.cell_count.xyz;
@@ -304,12 +309,32 @@ fn sdf_3d(p: vec2<f32>) -> vec4<f32> {
     }
 
     var color = vec3(0.4, 0.4, 0.4);
-    if vis_uniforms.raymarch_mode == MODE_SNAP {
-        color = vec3(0.4, 1.0, 0.4); // nice color for this mode.
-    }
     if dist < EPSILON {
-        // add lighting only if we hit something.
-        color = phong_lighting(0.8, 0.5, 50.0, position, eye, vec3(-5.0, 5.0, 5.0), color);
+        if vis_uniforms.raymarch_mode == MODE_SNAP_STYLIZED {
+            color = phong_lighting(0.8, 0.5, 50.0, position, eye, vec3(-5.0, 5.0, 5.0), vec3(0.4, 1.0, 0.4));
+        }
+        else {
+            // add lighting only if we hit something.
+            // color = phong_lighting(0.8, 0.5, 50.0, position, eye, shadow_camera.eye.xyz, color);
+            let light = shadow_camera.eye.xyz;
+            let light_dir = normalize(light - position);
+            let ambiant = 0.2;
+            let normal = estimate_normal(position);
+            let diffuse = max(0.0, dot(normal, light_dir));
+            var diffuse_strength = 0.5;
+
+            let view_dir = normalize(camera.eye.xyz - position);
+            let half_dir = normalize(view_dir + light_dir);
+            let specular = max(0.0, dot(normal, half_dir));
+
+            let brightness = ambiant + (diffuse + specular) * diffuse_strength;
+
+            // arbitrary attenuation
+            color.r *= exp(-1.8 * (1.0 - brightness));
+            color.g *= exp(-1.9 * (1.0 - brightness));
+            color.b *= exp(-1.9 * (1.0 - brightness));
+        }
+
     } else {
         color = vec3(0.0, 0.0, 0.0);
     }

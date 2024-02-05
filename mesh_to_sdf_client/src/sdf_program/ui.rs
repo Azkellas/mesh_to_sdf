@@ -210,6 +210,11 @@ impl SdfProgram {
                         RaymarchMode::Tetrahedral as _,
                         "Tetrahedral",
                     );
+                    ui.selectable_value(
+                        &mut self.settings.settings.raymarch_mode,
+                        RaymarchMode::SnapStylized as _,
+                        "Snap Stylized",
+                    );
                 });
             ui.end_row();
         }
