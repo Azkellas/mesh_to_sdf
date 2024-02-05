@@ -51,7 +51,7 @@ impl SdfProgram {
                     ui.label("Current file");
                     ui.label(
                         file_name
-                            .rsplit_once('\\')
+                            .rsplit_once(std::path::MAIN_SEPARATOR)
                             .map_or(file_name.as_str(), |(_, name)| name),
                     );
                 }

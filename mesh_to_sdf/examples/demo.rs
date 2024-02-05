@@ -1,3 +1,4 @@
+//! This example demonstrates how to use mesh_to_sdf to generate signed distance fields from a glTF model.
 use itertools::Itertools;
 
 fn main() {

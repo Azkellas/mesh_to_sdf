@@ -130,7 +130,7 @@ impl<V: Point> Grid<V> {
     }
 
     /// Snap a point to the grid.
-    /// Returns a SnapResult specifying if the point is inside or outside the grid.
+    /// Returns a `SnapResult` specifying if the point is inside or outside the grid.
     pub fn snap_point_to_grid(&self, point: &V) -> SnapResult {
         let cell = point
             .sub(&self.get_bounding_box().0)

@@ -54,7 +54,7 @@
 //! #### Mesh Topology
 //!
 //! Indices can be of any type that implements `Into<u32>`, e.g. `u16` and `u32`. Topology can be list or strip.
-//! If the indices are not provided, they are supposed to be 0..vertices.len().
+//! If the indices are not provided, they are supposed to be `0..vertices.len()`.
 //!
 //! For vertices, this library aims to be as generic as possible by providing a trait `Point` that can be implemented for any type.
 //! Implementations for most common math libraries are gated behind feature flags. By default, only `[f32; 3]` is provided.
@@ -133,13 +133,10 @@ where
             Topology::TriangleList(Some(indices)) => {
                 Box::new(indices.iter().map(|x| (*x).into() as usize).tuples())
             }
-            // TODO: test
             Topology::TriangleList(None) => Box::new((0..vertices.len()).tuples()),
-            // TODO: test
             Topology::TriangleStrip(Some(indices)) => {
                 Box::new(indices.iter().map(|x| (*x).into() as usize).tuple_windows())
             }
-            // TODO: test
             Topology::TriangleStrip(None) => Box::new((0..vertices.len()).tuple_windows()),
         }
     }
@@ -419,7 +416,7 @@ where
 }
 
 #[cfg(test)]
-pub mod tests {
+mod tests {
     use super::*;
 
     #[test]
@@ -479,6 +476,50 @@ pub mod tests {
 
         for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
             assert_eq!(sdf, grid_sdf, "i: {}", i);
+        }
+    }
+
+    #[test]
+    fn test_topology() {
+        let grid = Grid::from_bounding_box(&[0., 0., 0.], &[5., 5., 5.], &[5, 5, 5]);
+
+        let v0 = [0., 1., 0.];
+        let v1 = [1., 2., 3.];
+        let v2 = [1., 3., 4.];
+        let v3 = [2., 0., 0.];
+        // triangles: 012 123 230
+
+        let triangle_list_indices = {
+            let vertices: Vec<[f32; 3]> = vec![v0, v1, v2, v3];
+            let indices: Vec<u32> = vec![0, 1, 2, 1, 2, 3, 2, 3, 0];
+            generate_grid_sdf(
+                &vertices,
+                crate::Topology::TriangleList(Some(&indices)),
+                &grid,
+            )
+        };
+
+        let triangle_list_none = {
+            let vertices: Vec<[f32; 3]> = vec![v0, v1, v2, v1, v2, v3, v2, v3, v0];
+            generate_grid_sdf(&vertices, Topology::TriangleList::<u32>(None), &grid)
+        };
+
+        let triangle_strip_indices = {
+            let vertices: Vec<[f32; 3]> = vec![v0, v1, v2, v3];
+            let indices: Vec<u32> = vec![0, 1, 2, 3, 0];
+            generate_grid_sdf(&vertices, Topology::TriangleStrip(Some(&indices)), &grid)
+        };
+
+        let triangle_strip_none = {
+            let vertices: Vec<[f32; 3]> = vec![v0, v1, v2, v3, v0];
+            generate_grid_sdf(&vertices, Topology::TriangleStrip::<u32>(None), &grid)
+        };
+
+        let cell_count = grid.get_total_cell_count();
+        for i in 0..cell_count {
+            assert_eq!(triangle_list_indices[i], triangle_list_none[i]);
+            assert_eq!(triangle_list_indices[i], triangle_strip_indices[i]);
+            assert_eq!(triangle_list_indices[i], triangle_strip_none[i]);
         }
     }
 }
