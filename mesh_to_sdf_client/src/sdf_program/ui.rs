@@ -296,9 +296,9 @@ impl SdfProgram {
 
     fn ui_powers(&mut self, ui: &mut egui::Ui) {
         for (label, range) in [
-            ("Positive power", 0.0..=10.0),
-            ("Negative power", 0.0..=10.0),
-            ("Surface power", 0.0..=10.0),
+            ("Positive power", 0.0..=1.0),
+            ("Negative power", 0.0..=1.0),
+            ("Surface power", 0.0..=1.0),
             ("Surface width", 0.0001..=0.1),
             ("Point size", 0.1..=1.),
         ] {

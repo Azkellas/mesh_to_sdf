@@ -79,19 +79,21 @@ fn main_vs(
     var negative_strength = 0.;
     var surface_strength = 0.;
 
+    let cell_radius = min(cell_size.x, min(cell_size.y, cell_size.z)) * 0.5;
+
     // positive strength is how "positive" is the point
-    if distance > 0. {
-        positive_strength = 10. * vis_uniforms.positive_power * distance;
+    if distance > vis_uniforms.surface_width {
+        positive_strength = saturate(vis_uniforms.positive_power * distance / cell_radius);
     }
     // negative strength is how "negative" is the point
     // we boost it arbitrarily to make it more visible since inside points are more likely to be small
     // and less visible since behind the surface
-    if distance < 0. {
-        negative_strength = saturate(- 10. * vis_uniforms.negative_power * distance);
+    if distance < - vis_uniforms.surface_width {
+        negative_strength = saturate(- vis_uniforms.negative_power * distance / cell_radius);
     }
     // surface strength is how close to the surface is the point
     if abs(distance) < vis_uniforms.surface_width {
-        surface_strength = vis_uniforms.surface_power * (1.0 - abs(distance) / vis_uniforms.surface_width);
+        surface_strength = saturate(vis_uniforms.surface_power * (1.0 - abs(distance) / vis_uniforms.surface_width));
     }
 
     // compute vertex position
