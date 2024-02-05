@@ -130,19 +130,19 @@ impl SdfProgram {
                 }
             }
             ui.end_row();
-
-            if let Some(ref run_info) = self.last_run_info {
-                ui.label(format!(
-                    "Last generation: {:.0}ms with size {}x{}x{} = {}",
-                    run_info.time,
-                    run_info.size[0],
-                    run_info.size[1],
-                    run_info.size[2],
-                    run_info.size[0] * run_info.size[1] * run_info.size[2]
-                ));
-            }
-            ui.end_row();
         });
+
+        if let Some(ref run_info) = self.last_run_info {
+            ui.label(format!(
+                "Last generation: {:.0}ms with size {}x{}x{} = {}",
+                run_info.time,
+                run_info.size[0],
+                run_info.size[1],
+                run_info.size[2],
+                run_info.size[0] * run_info.size[1] * run_info.size[2]
+            ));
+        }
+        ui.end_row();
 
         if let Some((ref msg, ref start)) = self.alert_message {
             let timeout_s = 3.0_f32;

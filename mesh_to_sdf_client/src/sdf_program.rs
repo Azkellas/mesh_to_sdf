@@ -240,7 +240,7 @@ impl SdfProgram {
                 _negative_padding: 0.0,
                 surface_color: [1.0, 0.0, 0.0],
                 _surface_padding: 0.0,
-                positives_power: 1.0,
+                positives_power: 0.1,
                 negatives_power: 1.0,
                 surface_power: 1.0,
                 surface_width: 0.02,

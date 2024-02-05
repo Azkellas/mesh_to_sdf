@@ -67,22 +67,8 @@ fn main_vs(
     return out;
 }
 
-const EPSILON = 0.001;
-
-fn sdf_cube(p: vec3<f32>, origin: vec3<f32>, half_size: vec3<f32>) -> f32 {
-    let d = abs(p - origin) - half_size;
-    let insideDistance = min(max(d.x, max(d.y, d.z)), 0.0);
-    let outsideDistance = length(max(d, vec3(0.0)));
-    return insideDistance + outsideDistance;
-}
-
-fn sdf_bounding_box(position: vec3<f32>) -> f32 {
-    let box_center = (uniforms.end.xyz + uniforms.start.xyz) * 0.5;
-    let box_half_size = (uniforms.end.xyz - uniforms.start.xyz) * 0.5;
-    let dist = sdf_cube(position, box_center, box_half_size);
-
-    return dist;
-}
+// Relative to cell_radius.
+const EPSILON = 0.01;
 
 fn get_distance(in_cell: vec3<i32>) -> f32 {
     var cell = max(in_cell, vec3<i32>(0, 0, 0));
@@ -231,10 +217,11 @@ fn sdf_grid(position: vec3<f32>) -> f32 {
 }
 
 fn estimate_normal(p: vec3<f32>) -> vec3<f32> {
+    let epsilon = EPSILON * max(uniforms.cell_size.x, max(uniforms.cell_size.y, uniforms.cell_size.z));
     return normalize(vec3(
-        sdf_grid(vec3(p.x + EPSILON, p.y, p.z)) - sdf_grid(vec3(p.x - EPSILON, p.y, p.z)),
-        sdf_grid(vec3(p.x, p.y + EPSILON, p.z)) - sdf_grid(vec3(p.x, p.y - EPSILON, p.z)),
-        sdf_grid(vec3(p.x, p.y, p.z + EPSILON)) - sdf_grid(vec3(p.x, p.y, p.z - EPSILON))
+        sdf_grid(vec3(p.x + epsilon, p.y, p.z)) - sdf_grid(vec3(p.x - epsilon, p.y, p.z)),
+        sdf_grid(vec3(p.x, p.y + epsilon, p.z)) - sdf_grid(vec3(p.x, p.y - epsilon, p.z)),
+        sdf_grid(vec3(p.x, p.y, p.z + epsilon)) - sdf_grid(vec3(p.x, p.y, p.z - epsilon))
     ));
 }
 
@@ -272,53 +259,56 @@ fn unproject(pixel: vec2<f32>) -> vec3<f32> {
     return normalize(dir_world.xyz);
 }
 
+fn intersectAABB(rayOrigin: vec3<f32>, rayDir: vec3<f32>, boxMin: vec3<f32>, boxMax: vec3<f32>) -> vec2<f32> {
+	let tMin: vec3<f32> = (boxMin - rayOrigin) / rayDir;
+	let tMax: vec3<f32> = (boxMax - rayOrigin) / rayDir;
+	let t1: vec3<f32> = min(tMin, tMax);
+	let t2: vec3<f32> = max(tMin, tMax);
+	let tNear: f32 = max(max(t1.x, t1.y), t1.z);
+	let tFar: f32 = min(min(t2.x, t2.y), t2.z);
+	return vec2<f32>(tNear, tFar);
+} 
+
+
 // entry point of the 3d raymarching.
 fn sdf_3d(p: vec2<f32>) -> vec4<f32> {
 
     let eye = camera.eye.xyz;
     let ray = unproject(p);
 
-    var position = eye;
-    var dist = 0.0;
-
-    // go inside of box if possible
-    let MAX_STEPS = 100;
-    for (var i = 0; i < MAX_STEPS; i++) {
-        dist = sdf_bounding_box(position);
-        if dist < EPSILON {
-                break;
-        }
-        if dist == 100.0 {
-            break;
-        }
-        position += ray * dist;
+    let box_hit = intersectAABB(eye, ray, uniforms.start.xyz, uniforms.end.xyz);
+    if box_hit.x > box_hit.y {
+        // outside the box
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
+    let epsilon = EPSILON * max(uniforms.cell_size.x, max(uniforms.cell_size.y, uniforms.cell_size.z));
+    var position = eye + (box_hit.x + epsilon) * ray;
 
-    // put the position inside the box.
-    // position += ray * uniforms.cell_size.xyz * 0.5;
-
-    // snap the position on the grid
-    position = max(position, uniforms.start.xyz + vec3(EPSILON));
-    position = min(position, uniforms.end.xyz - vec3(EPSILON));
 
     // actual ray marching.
-    dist = 0.0;
+    var dist = 0.0;
+    let MAX_STEPS = 100;
     for (var i = 0; i < MAX_STEPS; i++) {
         dist = sdf_grid(position);
-        if dist < EPSILON {
+        if dist < epsilon {
                 break;
         }
         position += ray * dist;
     }
 
-    var color = vec3(0.4, 0.4, 0.4);
-    if dist < EPSILON {
+    var color = vec3(0.0, 0.0, 0.0);
+    if dist < epsilon {
         if vis_uniforms.raymarch_mode == MODE_SNAP_STYLIZED {
+            // Stylized shading
+            // It's due to the degenerated normals in the snap grid.
+            // Since the gradient is stepped, the normals are 0 most of the time.
             color = phong_lighting(0.8, 0.5, 50.0, position, eye, vec3(-5.0, 5.0, 5.0), vec3(0.4, 1.0, 0.4));
         }
         else {
             // add lighting only if we hit something.
             // color = phong_lighting(0.8, 0.5, 50.0, position, eye, shadow_camera.eye.xyz, color);
+            color = vec3(0.4, 0.4, 0.4);
+
             let light = shadow_camera.eye.xyz;
             let light_dir = normalize(light - position);
             let ambiant = 0.2;
@@ -337,9 +327,6 @@ fn sdf_3d(p: vec2<f32>) -> vec4<f32> {
             color.g *= exp(-1.9 * (1.0 - brightness));
             color.b *= exp(-1.9 * (1.0 - brightness));
         }
-
-    } else {
-        color = vec3(0.0, 0.0, 0.0);
     }
 
     return vec4<f32>(color, 1.0);
