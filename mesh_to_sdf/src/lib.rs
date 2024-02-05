@@ -418,6 +418,66 @@ where
 }
 
 #[cfg(test)]
-pub mod test_utils {
-    pub use super::geo::point_triangle_signed_distance;
+pub mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate() {
+        let model = &easy_gltf::load("assets/suzanne.glb").unwrap()[0].models[0];
+        // make sure generate_grid_sdf returns the same result as generate_sdf
+        let vertices = model.vertices().iter().map(|v| v.position).collect_vec();
+        let indices = model.indices().unwrap();
+        let query_points = [
+            cgmath::Vector3::new(0.0, 0.0, 0.0),
+            cgmath::Vector3::new(1.0, 1.0, 1.0),
+            cgmath::Vector3::new(0.1, 0.2, 0.2),
+        ];
+        let sdf = generate_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &query_points,
+        );
+
+        // pysdf [0.45216727 -0.6997909   0.45411023] # negative is outside in pysdf
+        // mesh_to_sdf [-0.40961263  0.6929414  -0.46345082] # negative is inside in mesh_to_sdf
+        let baseline = [-0.42, 0.69, -0.46];
+
+        // make sure the results are close enough.
+        // the results are not exactly the same because the algorithm is not the same and baselines might not be exact.
+        // this is mostly to make sure the results are not completely off.
+        for (sdf, baseline) in sdf.iter().zip(baseline.iter()) {
+            assert!((sdf - baseline).abs() < 0.1);
+        }
+    }
+
+    #[test]
+    fn test_generate_grid() {
+        // make sure generate_grid_sdf returns the same result as generate_sdf.
+        // assumes generate_sdf is properly tested and correct.
+        let vertices: Vec<[f32; 3]> = vec![[0., 1., 0.], [1., 2., 3.], [1., 3., 4.], [2., 0., 0.]];
+        let indices: Vec<u32> = vec![0, 1, 2, 1, 2, 3];
+        let grid = Grid::from_bounding_box(&[0., 0., 0.], &[5., 5., 5.], &[5, 5, 5]);
+        let mut query_points = Vec::new();
+        for x in 0..grid.get_cell_count()[0] {
+            for y in 0..grid.get_cell_count()[1] {
+                for z in 0..grid.get_cell_count()[2] {
+                    query_points.push(grid.get_cell_center(&[x, y, z]));
+                }
+            }
+        }
+        let sdf = generate_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(&indices)),
+            &query_points,
+        );
+        let grid_sdf = generate_grid_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(&indices)),
+            &grid,
+        );
+
+        for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
+            assert_eq!(sdf, grid_sdf, "i: {}", i);
+        }
+    }
 }

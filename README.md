@@ -97,7 +97,7 @@ This project is still in its early stages. Here is a list of things that are pla
 - [ ] [lib] Optimize `mesh_to_sdf` by computing on the gpu
 - [ ] [lib] Load/Save vf files
 - [ ] [lib] General optimizations
-- [ ] [lib] Tests/Benchmarks/Examples
+- [x] [lib] Tests/Benchmarks/Examples
 - [ ] [lib] Methods to sample the surface
 - [x] [client] Display meshes
 - [x] [client] Raymarch the surface
