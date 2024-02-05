@@ -632,6 +632,16 @@ impl SdfProgram {
                 self.settings.settings.surface_width =
                     (xmax - xmin).max(ymax - ymin).max(zmax - zmin) / 100.0;
 
+                // Place the camera eye at the center of the model.
+                self.camera.camera.look_at.center = glam::Vec3::new(
+                    (xmin + xmax) / 2.0,
+                    (ymin + ymax) / 2.0,
+                    (zmin + zmax) / 2.0,
+                );
+                // And at a pertinent distance.
+                self.camera.camera.look_at.distance =
+                    (xmax - xmin).max(ymax - ymin).max(zmax - zmin) * 2.0;
+
                 self.generate_sdf(device)
             }
         }
