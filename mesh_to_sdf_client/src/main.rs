@@ -36,12 +36,16 @@ fn main() {
     // Only enabled in native debug mode.
     #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
     {
-        let path = "shaders";
-        log::info!("Watching {path}");
         let data = data.clone();
         std::thread::spawn(move || {
-            if let Err(error) = watch(path, data) {
-                log::error!("Could not watch shaders folder: {error:?}");
+            // first try to watch the mesh_to_sdf_client/shaders folder (runnin from the root of the project)
+            // if that fails, try to watch the shaders folder (running from the client folder)
+            let paths = ["mesh_to_sdf_client/shaders", "shaders"];
+            for path in paths {
+                log::info!("Watching {path}");
+                if let Err(error) = watch(path, data.clone()) {
+                    log::error!("Could not watch shaders folder: {error:?}");
+                }
             }
         });
     }
