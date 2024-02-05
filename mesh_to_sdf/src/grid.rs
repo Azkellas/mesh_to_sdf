@@ -84,6 +84,7 @@ impl<V: Point> Grid<V> {
         self.cell_count
     }
 
+    /// Get the total  of cells.
     pub fn get_total_cell_count(&self) -> usize {
         self.cell_count[0] * self.cell_count[1] * self.cell_count[2]
     }

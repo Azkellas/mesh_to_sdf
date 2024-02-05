@@ -41,3 +41,6 @@ harness = false
 [[bench]]
 name = "generate_grid_sdf"
 harness = false
+
+[lints]
+workspace = true

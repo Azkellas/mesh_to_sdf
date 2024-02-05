@@ -201,7 +201,7 @@ where
 }
 
 /// State for the binary heap.
-/// Used in generate_grid_sdf.
+/// Used in [`generate_grid_sdf`].
 #[derive(Copy, Clone, Eq, PartialEq)]
 struct State {
     // signed distance to mesh.
@@ -234,7 +234,7 @@ impl PartialOrd for State {
 /// - `cell_radius`: the size of a cell (e.g. the size of a voxel).
 /// - `cell_count`: the number of cells in each direction (e.g. the number of voxels in each direction).
 /// Note that if you want to sample x in 0 1 2 .. 10, you need 11 cells in this direction and not 10.
-/// The start_cell is the center of the first cell and not a corner of the grid.
+/// The `start_cell` is the center of the first cell and not a corner of the grid.
 /// `cell_radius` can be different in each direction and even negative.
 /// `cell_count` can be different in each direction
 ///
@@ -311,12 +311,10 @@ where
 
         // The bounding box is snapped to the grid.
         let min_cell = match grid.snap_point_to_grid(&bounding_box.0) {
-            SnapResult::Inside(cell) => cell,
-            SnapResult::Outside(cell) => cell,
+            SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
         };
         let max_cell = match grid.snap_point_to_grid(&bounding_box.1) {
-            SnapResult::Inside(cell) => cell,
-            SnapResult::Outside(cell) => cell,
+            SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
         };
         // Add one to max_cell and remove one to min_cell to check nearby cells.
         let min_cell = [

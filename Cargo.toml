@@ -12,8 +12,9 @@ version = "0.1.0"
 inherits = "release"
 debug = true
 
-[workspace.lints]
-rust = { dead_code = "allow", missing_docs = "warn" }
+[workspace.lints.rust]
+dead_code = "allow"
+missing_docs = "warn"
 
 [workspace.lints.clippy]
 all = "warn"
@@ -84,3 +85,4 @@ unused_self = "warn"
 useless_transmute = "warn"
 verbose_file_reads = "warn"
 zero_sized_map_values = "warn"
+# missing_docs_in_private_items = "warn"

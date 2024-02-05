@@ -51,6 +51,7 @@ fn triangle_normal<V: Point>(a: &V, b: &V, c: &V) -> V {
 /// <https://github.com/embree/embree/blob/master/tutorials/common/math/closest_point.h#L10>
 fn closest_point_triangle<V: Point>(p: &V, a: &V, b: &V, c: &V) -> V {
     // Add safety checks for degenerate triangles
+    #[allow(clippy::match_same_arms)]
     match (a.eq(b), b.eq(c), a.eq(c)) {
         (true, true, true) => {
             return *a;
