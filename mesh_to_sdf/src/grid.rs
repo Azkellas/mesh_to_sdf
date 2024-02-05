@@ -1,7 +1,7 @@
 use crate::point::Point;
 
 /// Result of snapping a point to the grid.
-/// If the point is inside the grid, the cell index is returned.
+/// If the point is inside the grid, the cell it is within is returned.
 /// If the point is outside the grid, the cell index is the nearest cell.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SnapResult {
@@ -14,6 +14,15 @@ pub enum SnapResult {
 }
 
 /// Helper struct to represent a grid for grid sdf.
+/// A grid is defined by three parameters:
+/// - `first_cell`: the position of the center of the first cell.
+/// - `cell_size`: the size of a cell (i.e. the size of a voxel).
+/// - `cell_count`: the number of cells in each direction (i.e. the number of voxels in each direction).
+///
+/// Note that if you want to sample x in 0 1 2 .. 10, you need 11 cells in this direction and not 10.
+///
+/// - `cell_size` can be different in each direction and even negative.
+/// - `cell_count` can be different in each direction
 #[derive(Debug, Clone)]
 pub struct Grid<V: Point> {
     /// The center of the first cell.
@@ -26,8 +35,8 @@ pub struct Grid<V: Point> {
 
 impl<V: Point> Grid<V> {
     /// Create a new grid.
-    /// `first_cell` is the center of the first cell.
-    /// `cell_size` is the size of a cell. A cell goes from `center - cell_size / 2` to `center + cell_size / 2`.
+    /// - `first_cell` is the center of the first cell.
+    /// - `cell_size` is the size of a cell. A cell goes from `center - cell_size / 2` to `center + cell_size / 2`.
     pub fn new(first_cell: V, cell_size: V, cell_count: [usize; 3]) -> Self {
         Self {
             first_cell,
@@ -37,9 +46,10 @@ impl<V: Point> Grid<V> {
     }
 
     /// Create a new grid from a bounding box.
-    /// `min_cell` is the minimum corner of the bounding box.
-    /// `max_cell` is the maximum corner of the bounding box.
-    /// `cell_count` is the number of cells in each direction.
+    /// - `min_cell` is the minimum corner of the bounding box.
+    /// - `max_cell` is the maximum corner of the bounding box.
+    /// - `cell_count` is the number of cells in each direction.
+    ///
     /// The grid will be centered in the bounding box.
     /// The size of a cell will be `bounding_box_size / cell_count`.
     /// The first cell will be at `min_cell + cell_size / 2`.
@@ -89,7 +99,11 @@ impl<V: Point> Grid<V> {
         self.cell_count[0] * self.cell_count[1] * self.cell_count[2]
     }
 
-    /// Get bouding box
+    /// Get bouding box.
+    ///
+    /// The bounding box is defined by the minimum and maximum corners.
+    /// - The minimum corner is the center of the first cell minus half a cell size.
+    /// - The maximum corner is the center of the last cell plus half a cell size.
     pub fn get_bounding_box(&self) -> (V, V) {
         let min = self.first_cell.sub(&self.cell_size.fmul(0.5));
         let max = V::new(
@@ -116,7 +130,7 @@ impl<V: Point> Grid<V> {
     }
 
     /// Snap a point to the grid.
-    /// Returns None if the point is outside the grid.
+    /// Returns a SnapResult specifying if the point is inside or outside the grid.
     pub fn snap_point_to_grid(&self, point: &V) -> SnapResult {
         let cell = point
             .sub(&self.get_bounding_box().0)
@@ -142,6 +156,8 @@ impl<V: Point> Grid<V> {
             SnapResult::Inside(res)
         }
     }
+
+    // TODO: provide functions to get distance from any point with interpolation
 }
 
 #[cfg(test)]
