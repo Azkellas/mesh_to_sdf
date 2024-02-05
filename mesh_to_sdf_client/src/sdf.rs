@@ -55,9 +55,11 @@ impl Sdf {
             .collect_vec();
 
         let cell_size = grid.get_cell_size();
+        let first_cell = grid.get_first_cell();
+        let last_cell = grid.get_last_cell();
         let uniforms = SdfUniforms {
-            start: [start_cell[0], start_cell[1], start_cell[2], 0.0],
-            end: [end_cell[0], end_cell[1], end_cell[2], 0.0],
+            start: [first_cell[0], first_cell[1], first_cell[2], 0.0],
+            end: [last_cell[0], last_cell[1], last_cell[2], 0.0],
             cell_size: [cell_size[0], cell_size[1], cell_size[2], 0.0],
             cell_count: [cell_count[0], cell_count[1], cell_count[2], 0],
         };

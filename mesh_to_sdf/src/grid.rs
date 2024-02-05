@@ -65,6 +65,15 @@ impl<V: Point> Grid<V> {
         self.first_cell
     }
 
+    /// Get the center of the last cell.
+    pub fn get_last_cell(&self) -> V {
+        V::new(
+            self.first_cell.x() + self.cell_count[0] as f32 * self.cell_size.x(),
+            self.first_cell.y() + self.cell_count[1] as f32 * self.cell_size.y(),
+            self.first_cell.z() + self.cell_count[2] as f32 * self.cell_size.z(),
+        )
+    }
+
     /// Get the size of a cell.
     pub fn get_cell_size(&self) -> V {
         self.cell_size

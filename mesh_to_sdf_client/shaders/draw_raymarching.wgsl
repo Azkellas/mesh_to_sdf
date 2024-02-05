@@ -104,12 +104,15 @@ fn sdf_grid(position: vec3<f32>) -> f32 {
 
     var distance = 100.0;
 
+    // uniforms.start is the first cell, the center of the first cell.
+    let start_grid = uniforms.start.xyz - uniforms.cell_size.xyz * 0.5;
+
     switch vis_uniforms.raymarch_mode {
         case MODE_SNAP, MODE_SNAP_STYLIZED: {
             // snap the position on the grid
             let cell_size = uniforms.cell_size.xyz;
             let cell_count = uniforms.cell_count.xyz;
-            let cell_index = vec3<i32>(floor((position - uniforms.start.xyz) / cell_size));
+            let cell_index = vec3<i32>(floor((position - start_grid) / cell_size));
 
             distance = get_distance(cell_index);
         }
@@ -137,7 +140,7 @@ fn sdf_grid(position: vec3<f32>) -> f32 {
             // snap the position on the grid
             let cell_size = uniforms.cell_size.xyz;
             let cell_count = uniforms.cell_count.xyz;
-            let cell_index = (position - (uniforms.start.xyz + cell_size * 0.5)) / cell_size;
+            let cell_index = (position - uniforms.start.xyz) / cell_size;
             let idx = vec3<i32>(floor(cell_index));
 
             let c00 = get_distance(idx + vec3<i32>(0, 0, 0)) * (1.0 - fract(cell_index.x)) + get_distance(idx + vec3<i32>(1, 0, 0)) * fract(cell_index.x);
@@ -155,7 +158,7 @@ fn sdf_grid(position: vec3<f32>) -> f32 {
         case MODE_TETRAHEDRAL: {
             let cell_size = uniforms.cell_size.xyz;
             let cell_count = uniforms.cell_count.xyz;
-            let cell_index = (position - (uniforms.start.xyz + cell_size * 0.5)) / cell_size;
+            let cell_index = (position - uniforms.start.xyz) / cell_size;
             let idx = vec3<i32>(floor(cell_index));
             let r = fract(cell_index);
 
