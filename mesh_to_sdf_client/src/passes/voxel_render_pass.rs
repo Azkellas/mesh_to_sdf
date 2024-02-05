@@ -4,7 +4,7 @@ use crate::camera::CameraData;
 use crate::pbr::mesh::primitives::create_box;
 use crate::pbr::mesh::{Mesh, MeshVertex};
 use crate::pbr::shadow_map;
-use crate::sdf::{Sdf, SdfUniforms};
+use crate::sdf::{voxels_indices_cmp, Sdf, SdfUniforms};
 use crate::sdf_program::SettingsData;
 use crate::texture::Texture;
 use crate::utility::shader_builder::ShaderBuilder;
@@ -271,11 +271,18 @@ impl VoxelRenderPass {
             // find the last index that is less than the surface width
             // all indices before this index are valid and should be drawn.
             // note: if several cells are at exactly the surface width, we might miss some.
+            // see `voxels_indices_cmp` for more details on how the comparison is done.
+            let cell_size = [
+                sdf.uniforms.cell_size[0],
+                sdf.uniforms.cell_size[1],
+                sdf.uniforms.cell_size[2],
+            ];
             let index = sdf.ordered_indices.binary_search_by(|i| {
-                sdf.data[*i as usize]
-                    .abs()
-                    .partial_cmp(&settings.settings.surface_width.abs())
-                    .unwrap()
+                voxels_indices_cmp(
+                    sdf.data[*i as usize],
+                    settings.settings.surface_width,
+                    cell_size,
+                )
             });
             let index = match index {
                 Ok(i) | Err(i) => i,

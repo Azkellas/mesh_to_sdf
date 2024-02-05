@@ -116,11 +116,6 @@ fn main_vs(
 
 @fragment
 fn main_fs(in: VertexOutput) -> @location(0) vec4<f32> {
-    // discard pixels outside of the inscribed circle
-    if abs(in.distance) > vis_uniforms.surface_width {
-        discard;
-    }
-
     var color = vec3(0.5, 0.5, 0.5);
 
     let light = shadow_camera.eye.xyz;
