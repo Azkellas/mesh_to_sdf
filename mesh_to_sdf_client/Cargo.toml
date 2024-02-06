@@ -33,7 +33,6 @@ egui-wgpu = "0.26.0"
 egui-winit = "0.26.0"
 log = "0.4.20"
 env_logger = "0.11.1"
-rfd = {version = "0.13.0", default-features = true, features = ["file-handle-inner"] }
 cfg-if = "1.0.0"
 float-cmp = "0.9.0"
 
@@ -50,6 +49,12 @@ web-sys = "0.3.67"
 console_error_panic_hook = "0.1.7"
 console_log = "1.0.0"
 wasm-bindgen = "0.2.89"
+
+[target.'cfg(target_env = "musl")'.dependencies]
+rfd = {version = "0.13.0", default-features = false, features = ["async-std", "xdg-portal", "file-handle-inner"] }
+
+[target.'cfg(not(target_env = "musl"))'.dependencies]
+rfd = {version = "0.13.0", default-features = true, features = ["file-handle-inner"] }
 
 [features]
 # wgpu::DownlevelFlags::VERTEX_STORAGE is not supported on WebGL
