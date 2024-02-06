@@ -1,10 +1,12 @@
 # Mesh to SDF
 
-https://github.com/Azkellas/mesh_to_sdf/assets/29731210/9d87350c-f491-4de1-aa34-0922c8739e7a
+![](client.gif)
 
 This repository contains two crates:
 - `mesh_to_sdf`: a library to convert a mesh to a signed distance field (SDF).
 - `mesh_to_sdf_client`: a visualization client for the SDF of a mesh.
+
+documentation: https://docs.rs/mesh_to_sdf/latest/mesh_to_sdf/
 
 ---
 
