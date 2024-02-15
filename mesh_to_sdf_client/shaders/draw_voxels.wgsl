@@ -28,6 +28,7 @@ struct VisUniforms {
     surface_color: vec4<f32>,
     positive_power: f32,
     negative_power: f32,
+    surface_iso: f32,
     surface_power: f32,
     surface_width: f32,
     point_size: f32,
@@ -88,7 +89,7 @@ fn main_vs(
     // index was generated via for x in 0..cell_x { for y in 0..cell_y { for z in 0..cell_z { ... } } }
     // so index is x*cell_y*cell_z + y*cell_z + z
     var index = ordered_indices[in.instance_index];
-    let distance = sdf[index];
+    let distance = sdf[index] - vis_uniforms.surface_iso;
 
     let cell_z = index % cell_count.z;
     index /= cell_count.z;

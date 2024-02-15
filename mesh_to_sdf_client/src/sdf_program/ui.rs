@@ -108,7 +108,9 @@ impl SdfProgram {
                 Self::end_category(ui);
             }
 
-            if self.parameters.render_mode == RenderMode::Voxels {
+            if self.parameters.render_mode == RenderMode::Voxels
+                || self.parameters.render_mode == RenderMode::Raymarch
+            {
                 self.ui_surface(ui);
                 Self::end_category(ui);
             }
@@ -295,9 +297,14 @@ impl SdfProgram {
     }
 
     fn ui_powers(&mut self, ui: &mut egui::Ui) {
+        let Some(sdf) = self.sdf.as_ref() else {
+            return;
+        };
+
         for (label, range) in [
             ("Positive power", 0.0..=1.0),
             ("Negative power", 0.0..=1.0),
+            ("Isosurface", sdf.iso_limits.0..=sdf.iso_limits.1),
             ("Surface power", 0.0..=1.0),
             ("Surface width", 0.0001..=0.1),
             ("Point size", 0.1..=1.),
@@ -305,6 +312,7 @@ impl SdfProgram {
             let value = match label {
                 "Positive power" => self.settings.settings.positives_power,
                 "Negative power" => self.settings.settings.negatives_power,
+                "Isosurface" => self.settings.settings.surface_iso,
                 "Surface power" => self.settings.settings.surface_power,
                 "Surface width" => self.settings.settings.surface_width,
                 "Point size" => self.settings.settings.point_size,
@@ -325,6 +333,7 @@ impl SdfProgram {
                 match label {
                     "Positive power" => self.settings.settings.positives_power = new_value,
                     "Negative power" => self.settings.settings.negatives_power = new_value,
+                    "Isosurface" => self.settings.settings.surface_iso = new_value,
                     "Surface power" => self.settings.settings.surface_power = new_value,
                     "Surface width" => self.settings.settings.surface_width = new_value,
                     "Point size" => self.settings.settings.point_size = new_value,
@@ -351,11 +360,17 @@ impl SdfProgram {
     }
 
     fn ui_surface(&mut self, ui: &mut egui::Ui) {
-        let value = self.settings.settings.surface_width;
+        let Some(sdf) = self.sdf.as_ref() else {
+            return;
+        };
+        let value = self.settings.settings.surface_iso;
 
         let mut new_value = value;
-        ui.label("Surface width");
-        ui.add(egui::Slider::new(&mut new_value, 0.0005..=0.5));
+        ui.label("Isosurface");
+        ui.add(egui::Slider::new(
+            &mut new_value,
+            sdf.iso_limits.0..=sdf.iso_limits.1,
+        ));
 
         if !float_cmp::approx_eq!(f32, new_value, value, ulps = 2, epsilon = 1e-6) {
             // Save old state.
@@ -364,7 +379,7 @@ impl SdfProgram {
                 settings: self.settings.settings,
             };
 
-            self.settings.settings.surface_width = new_value;
+            self.settings.settings.surface_iso = new_value;
 
             // Get new state.
             let new_state = command_stack::State {

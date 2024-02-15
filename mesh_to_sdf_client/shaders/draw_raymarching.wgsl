@@ -29,6 +29,7 @@ struct VisUniforms {
     surface_color: vec4<f32>,
     positive_power: f32,
     negative_power: f32,
+    surface_iso: f32,
     surface_power: f32,
     surface_width: f32,
     point_size: f32,
@@ -75,7 +76,7 @@ fn get_distance(in_cell: vec3<i32>) -> f32 {
     cell = min(cell, vec3<i32>(uniforms.cell_count.xyz - vec3(1u)));
     let ucell = vec3<u32>(cell);
     let idx = ucell.z + ucell.y * uniforms.cell_count.z + ucell.x * uniforms.cell_count.z * uniforms.cell_count.y;
-    return sdf[idx];
+    return sdf[idx] - vis_uniforms.surface_iso;
 }
 
 fn sdf_grid(position: vec3<f32>) -> f32 {
@@ -260,13 +261,13 @@ fn unproject(pixel: vec2<f32>) -> vec3<f32> {
 }
 
 fn intersectAABB(rayOrigin: vec3<f32>, rayDir: vec3<f32>, boxMin: vec3<f32>, boxMax: vec3<f32>) -> vec2<f32> {
-	let tMin: vec3<f32> = (boxMin - rayOrigin) / rayDir;
-	let tMax: vec3<f32> = (boxMax - rayOrigin) / rayDir;
-	let t1: vec3<f32> = min(tMin, tMax);
-	let t2: vec3<f32> = max(tMin, tMax);
-	let tNear: f32 = max(max(t1.x, t1.y), t1.z);
-	let tFar: f32 = min(min(t2.x, t2.y), t2.z);
-	return vec2<f32>(tNear, tFar);
+    let tMin: vec3<f32> = (boxMin - rayOrigin) / rayDir;
+    let tMax: vec3<f32> = (boxMax - rayOrigin) / rayDir;
+    let t1: vec3<f32> = min(tMin, tMax);
+    let t2: vec3<f32> = max(tMin, tMax);
+    let tNear: f32 = max(max(t1.x, t1.y), t1.z);
+    let tFar: f32 = min(min(t2.x, t2.y), t2.z);
+    return vec2<f32>(tNear, tFar);
 } 
 
 
@@ -303,8 +304,7 @@ fn sdf_3d(p: vec2<f32>) -> vec4<f32> {
             // It's due to the degenerated normals in the snap grid.
             // Since the gradient is stepped, the normals are 0 most of the time.
             color = phong_lighting(0.8, 0.5, 50.0, position, eye, vec3(-5.0, 5.0, 5.0), vec3(0.4, 1.0, 0.4));
-        }
-        else {
+        } else {
             // add lighting only if we hit something.
             // color = phong_lighting(0.8, 0.5, 50.0, position, eye, shadow_camera.eye.xyz, color);
             color = vec3(0.4, 0.4, 0.4);

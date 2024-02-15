@@ -5,28 +5,6 @@ use anyhow::Result;
 
 use crate::passes::sdf_render_pass::SdfRenderPass;
 
-/// Sort distances by their distance to the surface.
-/// Used for voxel rendering to only draw valid cells.
-/// For negative surfaces: distance < max radius is always drawn: baseline
-///     distance > max radius is never drawn, always hidden behind the baseline
-/// For positive surfaces: order by distance
-/// As such the resulting array should be:
-/// [negative near surface ... positives sorted ... negative far surface]
-pub fn voxels_indices_cmp(a: f32, b: f32, cell_size: [f32; 3]) -> std::cmp::Ordering {
-    let max_rad = cell_size.iter().fold(0.0_f32, |acc, &x| acc.max(x));
-
-    #[allow(clippy::match_same_arms)]
-    match (a < -max_rad, b < -max_rad, a < 0.0, b < 0.0) {
-        (true, true, _, _) => a.partial_cmp(&b).unwrap(), // both are negative and far: discard by pushing to the end
-        (true, false, _, _) => std::cmp::Ordering::Greater, // a is negative and far: discard by pushing to the end
-        (false, true, _, _) => std::cmp::Ordering::Less, // b is negative and far: discard by pushing to the end
-        (_, _, true, false) => std::cmp::Ordering::Less, // a is negative and near: draw first
-        (_, _, false, true) => std::cmp::Ordering::Greater, // b is negative and near: draw first
-        (_, _, true, true) => b.partial_cmp(&a).unwrap(), // both are negative and near: sort by distance to 0
-        (_, _, false, false) => a.partial_cmp(&b).unwrap(), // both are positive and near: sort by distance to 0
-    }
-}
-
 #[repr(C)]
 #[derive(Default, Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SdfUniforms {
@@ -44,6 +22,9 @@ pub struct Sdf {
     pub data_buffer: wgpu::Buffer,
     pub ordered_indices: Vec<u32>,
     pub ordered_buffer: wgpu::Buffer,
+
+    pub grid: mesh_to_sdf::Grid<[f32; 3]>,
+    pub iso_limits: (f32, f32),
 
     pub bind_group: wgpu::BindGroup,
 }
@@ -69,10 +50,10 @@ impl Sdf {
             &grid,
         );
 
-        // sort cells by their (absolute) distance to surface.
+        // sort cells by their distance to surface.
         // used in the voxel render pass to only draw valid cells.
         let ordered_indices = (0..data.len())
-            .sorted_by(|i, j| voxels_indices_cmp(data[*i], data[*j], grid.get_cell_size()))
+            .sorted_by(|i, j| data[*i].total_cmp(&data[*j]))
             .map(|i| i as u32)
             .collect_vec();
 
@@ -125,6 +106,8 @@ impl Sdf {
             ],
         });
 
+        let iso_limits = data.iter().copied().minmax().into_option().unwrap();
+
         Ok(Self {
             uniforms,
             uniforms_buffer,
@@ -133,6 +116,8 @@ impl Sdf {
             ordered_indices,
             ordered_buffer,
             bind_group,
+            grid,
+            iso_limits,
         })
     }
 
