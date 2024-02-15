@@ -4,7 +4,7 @@ use crate::camera::CameraData;
 use crate::pbr::mesh::primitives::create_box;
 use crate::pbr::mesh::{Mesh, MeshVertex};
 use crate::pbr::shadow_map;
-use crate::sdf::{voxels_indices_cmp, Sdf, SdfUniforms};
+use crate::sdf::{Sdf, SdfUniforms};
 use crate::sdf_program::SettingsData;
 use crate::texture::Texture;
 use crate::utility::shader_builder::ShaderBuilder;
@@ -268,25 +268,25 @@ impl VoxelRenderPass {
                 occlusion_query_set: None,
             };
 
-            // find the last index that is less than the surface width
-            // all indices before this index are valid and should be drawn.
-            // note: if several cells are at exactly the surface width, we might miss some.
-            // see `voxels_indices_cmp` for more details on how the comparison is done.
-            let cell_size = [
-                sdf.uniforms.cell_size[0],
-                sdf.uniforms.cell_size[1],
-                sdf.uniforms.cell_size[2],
-            ];
-            let index = sdf.ordered_indices.binary_search_by(|i| {
-                voxels_indices_cmp(
-                    sdf.data[*i as usize],
-                    settings.settings.surface_width,
-                    cell_size,
-                )
+            // find the first voxel at distance >= iso - width
+            // and the last at distance <= iso + width * 0.5
+            // this way we are sure to draw only the voxels that are near the surface
+            // and that it will be complete without holes.
+            let cell_width = sdf.uniforms.cell_size[0]
+                .max(sdf.uniforms.cell_size[1].max(sdf.uniforms.cell_size[2]));
+            let from_index = sdf.ordered_indices.binary_search_by(|i| {
+                sdf.data[*i as usize].total_cmp(&(settings.settings.surface_iso - cell_width))
             });
-            let index = match index {
+            let to_index = sdf.ordered_indices.binary_search_by(|i| {
+                sdf.data[*i as usize].total_cmp(&(settings.settings.surface_iso + cell_width * 0.5))
+            });
+
+            let from_index = match from_index {
                 Ok(i) | Err(i) => i,
-            };
+            } as u32;
+            let to_index = match to_index {
+                Ok(i) | Err(i) => i,
+            } as u32;
 
             // render pass
             let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
@@ -297,7 +297,7 @@ impl VoxelRenderPass {
             rpass.set_bind_group(3, self.shadow_bind_group.as_ref().unwrap(), &[]);
             rpass.set_vertex_buffer(0, self.voxel.vertex_buffer.slice(..));
             rpass.set_index_buffer(self.voxel.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            rpass.draw_indexed(0..self.voxel.index_count, 0, 0..(index as u32));
+            rpass.draw_indexed(0..self.voxel.index_count, 0, from_index..to_index);
         }
         command_encoder.pop_debug_group();
     }

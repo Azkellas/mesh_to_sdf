@@ -86,11 +86,12 @@ pub struct Settings {
     pub _surface_padding: f32,
     pub positives_power: f32,
     pub negatives_power: f32,
+    pub surface_iso: f32,
     pub surface_power: f32,
     pub surface_width: f32,
     pub point_size: f32,
     pub raymarch_mode: u32,
-    pub _padding: [f32; 2],
+    pub _padding: [f32; 1],
 }
 
 pub struct SettingsData {
@@ -242,11 +243,12 @@ impl SdfProgram {
                 _surface_padding: 0.0,
                 positives_power: 0.1,
                 negatives_power: 1.0,
+                surface_iso: 0.0,
                 surface_power: 1.0,
                 surface_width: 0.02,
                 point_size: 0.3,
                 raymarch_mode: RaymarchMode::Trilinear as u32,
-                _padding: [0.0; 2],
+                _padding: [0.0; 1],
             },
         );
 

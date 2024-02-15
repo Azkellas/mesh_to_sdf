@@ -27,6 +27,7 @@ struct VisUniforms {
     surface_color: vec4<f32>,
     positive_power: f32,
     negative_power: f32,
+    surface_iso: f32,
     surface_power: f32,
     surface_width: f32,
     point_size: f32,
@@ -72,7 +73,8 @@ fn main_vs(
 
     // we want the color to be homogeneous in the sphere
     // so we compute it here directly.
-    let distance = sdf[in.instance_index];
+    // we subtract the iso value to get the distance to the isosurface and not the surface directly.
+    let distance = sdf[in.instance_index] - vis_uniforms.surface_iso;
 
     // affect a score for a point in the sphere
     var positive_strength = 0.;
