@@ -29,7 +29,7 @@ glam = { version = "0.25.0", default-features = true, features = ["bytemuck", "m
 easy-gltf = { version= "1.1.1", default-features = true, features = ["names"] }
 image = "0.24.8"
 pollster = "0.3.0"
-egui-wgpu = "0.26.0"
+egui-wgpu = "0.26.2"
 egui-winit = "0.26.2"
 log = "0.4.20"
 env_logger = "0.11.2"
