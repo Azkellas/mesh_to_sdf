@@ -1105,9 +1105,9 @@ dependencies = [
 
 [[package]]
 name = "egui-winit"
-version = "0.26.0"
+version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d85f8f89d6a937535e164a5bd6e31719fd7db01bc188d7b59425414b160a2ee1"
+checksum = "d0ef887214f5b65883cd1c85b0a5335e06f2876446c67fb64939c1ef0be518e0"
 dependencies = [
  "arboard",
  "egui 0.26.2",
