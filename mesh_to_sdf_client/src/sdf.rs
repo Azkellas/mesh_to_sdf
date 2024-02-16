@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use mesh_to_sdf::SignMethod;
 use wgpu::util::DeviceExt;
 
 use anyhow::Result;
@@ -37,6 +38,7 @@ impl Sdf {
         start_cell: &[f32; 3],
         end_cell: &[f32; 3],
         cell_count: &[u32; 3],
+        sign_method: SignMethod,
     ) -> Result<Self> {
         let ucell_count = [
             cell_count[0] as usize,
@@ -48,6 +50,7 @@ impl Sdf {
             vertices,
             mesh_to_sdf::Topology::TriangleList(Some(indices)),
             &grid,
+            sign_method,
         );
 
         // sort cells by their distance to surface.

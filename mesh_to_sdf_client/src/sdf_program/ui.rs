@@ -1,3 +1,5 @@
+use mesh_to_sdf::SignMethod;
+
 use super::*;
 
 impl SdfProgram {
@@ -116,6 +118,35 @@ impl SdfProgram {
             }
 
             self.ui_cells(ui);
+            Self::end_category(ui);
+
+            ui.label("Sdf Sign Method");
+            egui::ComboBox::from_id_source("sdf_sign_method")
+                .selected_text(format!("{:?}", self.parameters.sdf_sign_method))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.parameters.sdf_sign_method,
+                        SignMethod::Raycast,
+                        "Raycast",
+                    );
+                    ui.selectable_value(
+                        &mut self.parameters.sdf_sign_method,
+                        SignMethod::Normal,
+                        "Normal",
+                    );
+                });
+            ui.end_row();
+            ui.label("");
+            match self.parameters.sdf_sign_method {
+                SignMethod::Raycast => {
+                    ui.label("Robust check.\nRequires a watertight mesh.");
+                }
+                SignMethod::Normal => {
+                    ui.label("Might leak through the mesh.\nWorks for any mesh.");
+                }
+            }
+            ui.end_row();
+
             Self::end_category(ui);
 
             self.ui_light(ui);

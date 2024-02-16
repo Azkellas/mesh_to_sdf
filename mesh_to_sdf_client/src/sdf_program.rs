@@ -71,6 +71,7 @@ struct Parameters {
     cell_count: [u32; 3],
     bounding_box_extent: f32,
     render_mode: RenderMode,
+    sdf_sign_method: mesh_to_sdf::SignMethod,
     enable_shadows: bool,
 }
 
@@ -302,6 +303,7 @@ impl SdfProgram {
             gizmo_mode: GizmoMode::Translate,
             cell_count: [16, 16, 16],
             render_mode: RenderMode::Sdf,
+            sdf_sign_method: mesh_to_sdf::SignMethod::default(),
             enable_shadows: false, // deactivating shadows for now.
             bounding_box_extent: 1.1,
         };
@@ -683,6 +685,7 @@ impl SdfProgram {
             &start_cell,
             &end_cell,
             &self.parameters.cell_count,
+            self.parameters.sdf_sign_method,
         )?);
 
         self.last_run_info = Some(LastRunInfo {

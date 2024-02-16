@@ -8,7 +8,7 @@
 //! - [`generate_grid_sdf`]: computes the signed distance field for the mesh defined by `vertices` and `indices` on a [Grid].
 //!
 //! ```
-//! # use mesh_to_sdf::{generate_sdf, generate_grid_sdf, Topology, Grid};
+//! use mesh_to_sdf::{generate_sdf, generate_grid_sdf, SignMethod, Topology, Grid};
 //! // vertices are [f32; 3], but can be cgmath::Vector3<f32>, glam::Vec3, etc.
 //! let vertices: Vec<[f32; 3]> = vec![[0.5, 1.5, 0.5], [1., 2., 3.], [1., 3., 7.]];
 //! let indices: Vec<u32> = vec![0, 1, 2];
@@ -20,7 +20,9 @@
 //! let sdf: Vec<f32> = generate_sdf(
 //!     &vertices,
 //!     Topology::TriangleList(Some(&indices)), // TriangleList as opposed to TriangleStrip
-//!     &query_points);
+//!     &query_points,
+//!     SignMethod::Raycast, // How the sign is computed.
+//! );                       // Raycast is robust but requires the mesh to be watertight.
 //!
 //! for point in query_points.iter().zip(sdf.iter()) {
 //!     // distance is positive outside the mesh and negative inside.
@@ -38,7 +40,9 @@
 //! let sdf: Vec<f32> = generate_grid_sdf(
 //!     &vertices,
 //!     Topology::TriangleList(Some(&indices)),
-//!     &grid);
+//!     &grid,
+//!     SignMethod::Raycast, // How the sign is computed.
+//! );                       // Raycast is robust but requires the mesh to be watertight.
 //!
 //! for x in 0..cell_count[0] {
 //!     for y in 0..cell_count[1] {
@@ -51,6 +55,8 @@
 //! # assert_eq!(sdf[0], 1.0);
 //! ```
 //!
+//! ---
+//!
 //! #### Mesh Topology
 //!
 //! Indices can be of any type that implements `Into<u32>`, e.g. `u16` and `u32`. Topology can be list or strip.
@@ -60,12 +66,28 @@
 //! Implementations for most common math libraries are gated behind feature flags. By default, only `[f32; 3]` is provided.
 //! If you do not find your favorite library, feel free to implement the trait for it and submit a PR or open an issue.
 //!
+//! ---
+//!
+//! #### Computing sign
+//!
+//! This crate provides two methods to compute the sign of the distance:
+//! - `SignMethod::Raycast` (default): a robust method to compute the sign of the distance. It counts the number of intersection between a ray starting from the query point and the triangles of the mesh.
+//!     It only works for watertight meshes, but garantees the sign is correct.
+//! - `SignMethod::Normal`: It uses the normals of the triangles to estimate the sign by doing a dot product with the direction of the query point.
+//!     It works for non-watertight meshes but might leak negative distances outside the mesh.
+//!
+//! For grid generation, `Raycast` is ~1% slower.
+//! For query points, `Raycast` is ~10% slower.
+//! Note that it depends on the query points / grid size to triangle ratio, but this gives a rough idea.
+//!
+//! ---
+//!
 //! #### Using your favorite library
 //!
 //! To use your favorite math library with `mesh_to_sdf`, you need to add it to `mesh_to_sdf` dependency. For example, to use `glam`:
 //! ```toml
 //! [dependencies]
-//! mesh_to_sdf = { version = "0.1", features = ["glam"] }
+//! mesh_to_sdf = { version = "0.2.0", features = ["glam"] }
 //! ```
 //!
 //! Currently, the following libraries are supported:
@@ -73,17 +95,15 @@
 //! - `glam` (`glam::Vec3`)
 //! - `mint` (`mint::Vector3<f32>` and `mint::Point3<f32>`)
 //! - `nalgebra` (`nalgebra::Vector3<f32>` and `nalgebra::Point3<f32>`)
-//! - and `[f32; 3]`
+//! - `[f32; 3]`
 //!
-//! #### Determining inside/outside
-//!
-//! As of now, sign is computed by checking the normals of the triangles. This is not robust and might lead to negative distances leaking outside the mesh in pyramidal shapes.
-//! A more robust solution is planned for the future.
+//! ---
 //!
 //! #### Benchmarks
 //!
 //! [`generate_grid_sdf`] is much faster than [`generate_sdf`] and should be used whenever possible.
 //! [`generate_sdf`] does not allocate memory (except for the result array) but is slow. A faster implementation is planned for the future.
+//! [`SignMethod::Raycast`] is slightly slower than [`SignMethod::Normal`] but is robust and should be used whenever possible (~1% in [`generate_grid_sdf`], ~10% in [`generate_sdf`]).
 use std::boxed::Box;
 
 use itertools::Itertools;
@@ -142,6 +162,28 @@ where
     }
 }
 
+/// Method to compute the sign of the distance.
+///
+/// Raycast is the default method. It is robust but requires the mesh to be watertight.
+///
+/// Normal is not robust and might leak negative distances outside the mesh.
+///
+/// For grid generation, Raycast is ~1% slower.
+/// For query points, Raycast is ~10% slower.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SignMethod {
+    /// A robust method to compute the sign of the distance.
+    /// It counts the number of intersection between a ray starting from the query point and the mesh.
+    /// If the number of intersections is odd, the point is inside the mesh.
+    /// This requires the mesh to be watertight.
+    #[default]
+    Raycast,
+    /// A faster but not robust method to compute the sign of the distance.
+    /// It uses the normals of the triangles to estimate the sign.
+    /// It might leak negative distances outside the mesh.
+    Normal,
+}
+
 /// Compare two signed distances, taking into account floating point errors and signs.
 fn compare_distances(a: f32, b: f32) -> std::cmp::Ordering {
     // for a point to be inside, it has to be inside all normals of nearest triangles.
@@ -167,7 +209,8 @@ fn compare_distances(a: f32, b: f32) -> std::cmp::Ordering {
 /// Returns a vector of signed distances.
 /// Queries outside the mesh will have a positive distance, and queries inside the mesh will have a negative distance.
 /// ```
-/// # use mesh_to_sdf::{generate_sdf, Topology};
+/// use mesh_to_sdf::{generate_sdf, SignMethod, Topology};
+///
 /// let vertices: Vec<[f32; 3]> = vec![[0., 1., 0.], [1., 2., 3.], [1., 3., 4.]];
 /// let indices: Vec<u32> = vec![0, 1, 2];
 ///
@@ -177,7 +220,9 @@ fn compare_distances(a: f32, b: f32) -> std::cmp::Ordering {
 /// let sdf: Vec<f32> = generate_sdf(
 ///     &vertices,
 ///     Topology::TriangleList(Some(&indices)),
-///     &query_points);
+///     &query_points,
+///     SignMethod::Raycast, // How the sign is computed.
+/// );                       // Raycast is robust but requires the mesh to be watertight.
 ///
 /// for point in query_points.iter().zip(sdf.iter()) {
 ///     println!("Distance to {:?}: {}", point.0, point.1);
@@ -185,7 +230,12 @@ fn compare_distances(a: f32, b: f32) -> std::cmp::Ordering {
 ///
 /// # assert_eq!(sdf, vec![1.0]);
 /// ```
-pub fn generate_sdf<V, I>(vertices: &[V], indices: Topology<I>, query_points: &[V]) -> Vec<f32>
+pub fn generate_sdf<V, I>(
+    vertices: &[V],
+    indices: Topology<I>,
+    query_points: &[V],
+    sign_method: SignMethod,
+) -> Vec<f32>
 where
     V: Point,
     I: Copy + Into<u32> + Sync + Send,
@@ -201,11 +251,43 @@ where
         .map(|query| {
             Topology::get_triangles(vertices, &indices)
                 .map(|(i, j, k)| (&vertices[i], &vertices[j], &vertices[k]))
-                // point_triangle_signed_distance estimates sign with normals.
-                .map(|(a, b, c)| geo::point_triangle_signed_distance(query, a, b, c))
-                // find the closest triangle
-                .min_by(|a, b| compare_distances(*a, *b))
-                .expect("no triangle found") // TODO: handle error
+                .map(|(a, b, c)| match sign_method {
+                    // Raycast: returns (distance, ray_intersection)
+                    SignMethod::Raycast => (
+                        geo::point_triangle_distance(query, a, b, c),
+                        geo::ray_triangle_intersection(query, [a, b, c]).is_some(),
+                    ),
+                    // Normal: returns (signed_distance, false)
+                    SignMethod::Normal => {
+                        (geo::point_triangle_signed_distance(query, a, b, c), false)
+                    }
+                })
+                .fold(
+                    (f32::MAX, 0),
+                    |(min_distance, intersection_count), (distance, ray_intersection)| {
+                        match sign_method {
+                            SignMethod::Raycast => (
+                                min_distance.min(distance),
+                                intersection_count + ray_intersection as u32,
+                            ),
+                            SignMethod::Normal => (
+                                match compare_distances(distance, min_distance) {
+                                    std::cmp::Ordering::Less => distance,
+                                    _ => min_distance,
+                                },
+                                intersection_count,
+                            ),
+                        }
+                    },
+                )
+        })
+        .map(|(distance, intersection_count)| {
+            if intersection_count % 2 == 0 {
+                distance
+            } else {
+                // can only be odd if in raycast mode
+                -distance
+            }
         })
         .collect()
 }
@@ -243,7 +325,8 @@ impl PartialOrd for State {
 /// Returns a vector of signed distances.
 /// Cells outside the mesh will have a positive distance, and cells inside the mesh will have a negative distance.
 /// ```
-/// # use mesh_to_sdf::{generate_grid_sdf, Topology, Grid};
+/// use mesh_to_sdf::{generate_grid_sdf, SignMethod, Topology, Grid};
+///
 /// let vertices: Vec<[f32; 3]> = vec![[0.5, 1.5, 0.5], [1., 2., 3.], [1., 3., 4.]];
 /// let indices: Vec<u32> = vec![0, 1, 2];
 ///
@@ -256,7 +339,9 @@ impl PartialOrd for State {
 /// let sdf: Vec<f32> = generate_grid_sdf(
 ///     &vertices,
 ///     Topology::TriangleList(Some(&indices)),
-///     &grid);
+///     &grid,
+///     SignMethod::Raycast, // How the sign is computed.
+/// );                       // Raycast is robust but requires the mesh to be watertight.
 ///
 /// for x in 0..cell_count[0] {
 ///     for y in 0..cell_count[1] {
@@ -268,7 +353,12 @@ impl PartialOrd for State {
 /// }
 /// # assert_eq!(sdf[0], 1.0);
 /// ```
-pub fn generate_grid_sdf<V, I>(vertices: &[V], indices: Topology<I>, grid: &Grid<V>) -> Vec<f32>
+pub fn generate_grid_sdf<V, I>(
+    vertices: &[V],
+    indices: Topology<I>,
+    grid: &Grid<V>,
+    sign_method: SignMethod,
+) -> Vec<f32>
 where
     V: Point,
     I: Copy + Into<u32> + Sync + Send,
@@ -342,7 +432,10 @@ where
 
             let cell_pos = grid.get_cell_center(&cell);
 
-            let distance = geo::point_triangle_signed_distance(&cell_pos, a, b, c);
+            let distance = match sign_method {
+                SignMethod::Raycast => geo::point_triangle_distance(&cell_pos, a, b, c),
+                SignMethod::Normal => geo::point_triangle_signed_distance(&cell_pos, a, b, c),
+            };
             if compare_distances(distance, distances[cell_idx]).is_lt() {
                 // New smallest ditance: update the grid and add the cell to the heap.
                 steps += 1;
@@ -394,7 +487,12 @@ where
 
             let neighbour_cell_idx = grid.get_cell_idx(&neighbour_cell);
 
-            let distance = geo::point_triangle_signed_distance(&neighbour_cell_pos, a, b, c);
+            let distance = match sign_method {
+                SignMethod::Raycast => geo::point_triangle_distance(&neighbour_cell_pos, a, b, c),
+                SignMethod::Normal => {
+                    geo::point_triangle_signed_distance(&neighbour_cell_pos, a, b, c)
+                }
+            };
 
             if compare_distances(distance, distances[neighbour_cell_idx]).is_lt() {
                 // New smallest ditance: update the grid and add the cell to the heap.
@@ -411,6 +509,59 @@ where
         }
     }
     log::info!("[generate_grid_sdf] propagation steps: {}", steps);
+
+    if sign_method == SignMethod::Raycast {
+        // `ray_triangle_intersection` tests for direction [1.0, 0.0, 0.0]
+        // The idea here is to tests for all cells (x=0, y, z) and triangle.
+        // To optimize, we first iterate on triangles and for each triangle,
+        // only consider cells that are in its bounding box.
+        // If there is no intersection, don't consider the triangle.
+        // If there is one with distance `t`,
+        // each cell before `t` intersects the triangle, each cell after `t` does not.
+        // Finally, count the number of intersections for each cell.
+        // If the number is odd, the cell is inside the mesh.
+        // If the number is even, the cell is outside the mesh.
+        let mut intersections = vec![0; grid.get_total_cell_count()];
+        let mut raycasts_done = 0;
+        for triangle in Topology::get_triangles(vertices, &indices) {
+            let a = &vertices[triangle.0];
+            let b = &vertices[triangle.1];
+            let c = &vertices[triangle.2];
+            let bounding_box = geo::triangle_bounding_box(a, b, c);
+
+            // The bounding box is snapped to the grid.
+            let min_cell = match grid.snap_point_to_grid(&bounding_box.0) {
+                SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
+            };
+            let max_cell = match grid.snap_point_to_grid(&bounding_box.1) {
+                SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
+            };
+
+            for y in min_cell[1]..=max_cell[1] {
+                for z in min_cell[2]..=max_cell[2] {
+                    let cell = [0, y, z];
+                    let cell_pos = grid.get_cell_center(&cell);
+                    raycasts_done += 1;
+                    if let Some(distance) = geo::ray_triangle_intersection(&cell_pos, [a, b, c]) {
+                        let cell_count = distance / grid.get_cell_size().x();
+                        let cell_count = cell_count.floor() as usize;
+                        for x in 0..=cell_count {
+                            let cell = [x, y, z];
+                            let cell_idx = grid.get_cell_idx(&cell);
+                            intersections[cell_idx] += 1;
+                        }
+                    }
+                }
+            }
+        }
+        for (i, distance) in distances.iter_mut().enumerate() {
+            // distance is always positive here since we didn't check the normal.
+            if intersections[i] % 2 == 1 {
+                *distance = -*distance;
+            }
+        }
+        log::info!("[generate_grid_sdf] raycasts done: {}", raycasts_done);
+    }
 
     distances
 }
@@ -434,6 +585,7 @@ mod tests {
             &vertices,
             crate::Topology::TriangleList(Some(indices)),
             &query_points,
+            SignMethod::Normal,
         );
 
         // pysdf [0.45216727 -0.6997909   0.45411023] # negative is outside in pysdf
@@ -467,15 +619,52 @@ mod tests {
             &vertices,
             crate::Topology::TriangleList(Some(&indices)),
             &query_points,
+            SignMethod::Raycast,
         );
         let grid_sdf = generate_grid_sdf(
             &vertices,
             crate::Topology::TriangleList(Some(&indices)),
             &grid,
+            SignMethod::Raycast,
         );
 
+        // Test against generate_sdf
         for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
             assert_eq!(sdf, grid_sdf, "i: {}", i);
+        }
+
+        // Test continuity.
+        // Only valid for watertight meshes and Raycast method.
+        let test_continuity = |distance: f32, neigh_distance: f32, size: f32| {
+            assert!(
+                (distance - neigh_distance).abs() <= size,
+                "{} {} {}",
+                distance,
+                neigh_distance,
+                size
+            );
+        };
+        for x in 0..grid.get_cell_count()[0] - 1 {
+            for y in 0..grid.get_cell_count()[1] - 1 {
+                for z in 0..grid.get_cell_count()[2] - 1 {
+                    let index = grid.get_cell_idx(&[x, y, z]);
+
+                    let distance = grid_sdf[index];
+                    let cell_size = grid.get_cell_size();
+
+                    let neigh = grid.get_cell_idx(&[x + 1, y, z]);
+                    let neigh_distance = grid_sdf[neigh];
+                    test_continuity(distance, neigh_distance, cell_size.x());
+
+                    let neigh = grid.get_cell_idx(&[x, y + 1, z]);
+                    let neigh_distance = grid_sdf[neigh];
+                    test_continuity(distance, neigh_distance, cell_size.y());
+
+                    let neigh = grid.get_cell_idx(&[x, y, z + 1]);
+                    let neigh_distance = grid_sdf[neigh];
+                    test_continuity(distance, neigh_distance, cell_size.z());
+                }
+            }
         }
     }
 
@@ -496,23 +685,39 @@ mod tests {
                 &vertices,
                 crate::Topology::TriangleList(Some(&indices)),
                 &grid,
+                SignMethod::Normal,
             )
         };
 
         let triangle_list_none = {
             let vertices: Vec<[f32; 3]> = vec![v0, v1, v2, v1, v2, v3, v2, v3, v0];
-            generate_grid_sdf(&vertices, Topology::TriangleList::<u32>(None), &grid)
+            generate_grid_sdf(
+                &vertices,
+                Topology::TriangleList::<u32>(None),
+                &grid,
+                SignMethod::Normal,
+            )
         };
 
         let triangle_strip_indices = {
             let vertices: Vec<[f32; 3]> = vec![v0, v1, v2, v3];
             let indices: Vec<u32> = vec![0, 1, 2, 3, 0];
-            generate_grid_sdf(&vertices, Topology::TriangleStrip(Some(&indices)), &grid)
+            generate_grid_sdf(
+                &vertices,
+                Topology::TriangleStrip(Some(&indices)),
+                &grid,
+                SignMethod::Normal,
+            )
         };
 
         let triangle_strip_none = {
             let vertices: Vec<[f32; 3]> = vec![v0, v1, v2, v3, v0];
-            generate_grid_sdf(&vertices, Topology::TriangleStrip::<u32>(None), &grid)
+            generate_grid_sdf(
+                &vertices,
+                Topology::TriangleStrip::<u32>(None),
+                &grid,
+                SignMethod::Normal,
+            )
         };
 
         let cell_count = grid.get_total_cell_count();

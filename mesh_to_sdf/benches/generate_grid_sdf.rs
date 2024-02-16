@@ -1,3 +1,4 @@
+//! Benchmark for the `generate_grid_sdf` function
 use itertools::{Itertools, MinMaxResult};
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -49,14 +50,26 @@ fn criterion_benchmark(c: &mut Criterion) {
         &[xsize as usize, ysize as usize, zsize as usize],
     );
 
-    c.bench_function("generate_grid_sdf", |b| {
+    c.bench_function("generate_grid_sdf_normal", |b| {
         b.iter(|| {
             mesh_to_sdf::generate_grid_sdf(
                 black_box(&vertices),
                 black_box(mesh_to_sdf::Topology::TriangleList(Some(indices))),
                 black_box(&grid),
-            )
-        })
+                black_box(mesh_to_sdf::SignMethod::Normal),
+            );
+        });
+    });
+
+    c.bench_function("generate_grid_sdf_raycast", |b| {
+        b.iter(|| {
+            mesh_to_sdf::generate_grid_sdf(
+                black_box(&vertices),
+                black_box(mesh_to_sdf::Topology::TriangleList(Some(indices))),
+                black_box(&grid),
+                black_box(mesh_to_sdf::SignMethod::Raycast),
+            );
+        });
     });
 }
 

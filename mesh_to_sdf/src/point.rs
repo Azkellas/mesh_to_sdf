@@ -54,6 +54,14 @@ pub trait Point: Sized + Copy + Sync + Send {
     fn dot(&self, other: &Self) -> f32 {
         self.x() * other.x() + self.y() * other.y() + self.z() * other.z()
     }
+    /// Cross product of two points.
+    fn cross(&self, other: &Self) -> Self {
+        Self::new(
+            self.y() * other.z() - self.z() * other.y(),
+            self.z() * other.x() - self.x() * other.z(),
+            self.x() * other.y() - self.y() * other.x(),
+        )
+    }
     /// Length of the point.
     fn length(&self) -> f32 {
         self.dot(self).sqrt()
