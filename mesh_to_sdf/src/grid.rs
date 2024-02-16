@@ -18,9 +18,7 @@ pub enum SnapResult {
 /// - `first_cell`: the position of the center of the first cell.
 /// - `cell_size`: the size of a cell (i.e. the size of a voxel).
 /// - `cell_count`: the number of cells in each direction (i.e. the number of voxels in each direction).
-///
-/// Note that if you want to sample x in 0 1 2 .. 10, you need 11 cells in this direction and not 10.
-///
+///                 Note that if you want to sample x in 0 1 2 .. 10, you need 11 cells in this direction and not 10.
 /// - `cell_size` can be different in each direction and even negative.
 /// - `cell_count` can be different in each direction
 #[derive(Debug, Clone)]

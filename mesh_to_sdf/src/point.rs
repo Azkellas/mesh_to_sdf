@@ -11,6 +11,7 @@ mod impl_nalgebra;
 
 /// Point is the trait that represents a point in 3D space.
 /// It is an abstraction over the type of point used in the client math library.
+///
 /// While everything could be done with new/x/y/z only,
 /// the other methods are provided for optimization purposes,
 /// relying on the client math library to provide optimized implementations when possible.
