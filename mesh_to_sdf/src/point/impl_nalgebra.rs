@@ -55,6 +55,10 @@ impl Point for nalgebra::Vector3<f32> {
     fn dot(&self, other: &Self) -> f32 {
         self.dot(other)
     }
+    /// Cross product of two points.
+    fn cross(&self, other: &Self) -> Self {
+        self.cross(other)
+    }
     /// Length of the point.
     fn length(&self) -> f32 {
         self.norm()

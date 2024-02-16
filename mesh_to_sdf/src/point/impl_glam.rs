@@ -33,6 +33,10 @@ impl Point for glam::Vec3 {
     fn dot(&self, other: &Self) -> f32 {
         glam::Vec3::dot(*self, *other)
     }
+    /// Cross product of two points.
+    fn cross(&self, other: &Self) -> Self {
+        glam::Vec3::cross(*self, *other)
+    }
     /// Length of the point.
     fn length(&self) -> f32 {
         glam::Vec3::length(*self)

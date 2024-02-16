@@ -39,11 +39,7 @@ pub fn point_triangle_signed_distance<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) 
 fn triangle_normal<V: Point>(a: &V, b: &V, c: &V) -> V {
     let ab = b.sub(a);
     let ac = c.sub(a);
-    V::new(
-        ab.y() * ac.z() - ab.z() * ac.y(),
-        ab.z() * ac.x() - ab.x() * ac.z(),
-        ab.x() * ac.y() - ab.y() * ac.x(),
-    )
+    ab.cross(&ac)
 }
 
 /// Project a point onto a triangle.
@@ -132,6 +128,66 @@ fn closest_point_segment<V: Point>(p: &V, a: &V, b: &V) -> V {
     a.add(&ab.fmul(s12))
 }
 
+fn ray_triangle_intersection<V: Point>(
+    ray_origin: &V,
+    ray_dir: &V,
+    v0: &V,
+    v1: &V,
+    v2: &V,
+) -> bool {
+    // compute the plane's normal
+    let v0v1 = v1.sub(v0);
+    let v0v2 = v2.sub(v0);
+    let n = v0v1.cross(&v0v2);
+
+    // Step 1: finding projected point P
+
+    // check if the ray and plane are parallel.
+    let n_dot_ray_dir = n.dot(ray_dir);
+    if n_dot_ray_dir.abs() < 0.00001 {
+        // almost 0
+        return false;
+    }
+
+    let d = -n.dot(v0);
+    let t = -(n.dot(ray_origin) + d) / n_dot_ray_dir;
+
+    // check if the triangle is behind the ray
+    if t < 0.0 {
+        return false; // the triangle is behind
+    }
+
+    let p = ray_origin.add(&ray_dir.fmul(t));
+
+    // Step 2: inside-outside test
+
+    // edge 0
+    let edge0 = v1.sub(v0);
+    let vp0 = p.sub(v0);
+    let c = edge0.cross(&vp0);
+    if n.dot(&c) < 0.0 {
+        return false; // P is on the wrong side
+    }
+
+    // edge 1
+    let edge1 = v2.sub(v1);
+    let vp1 = p.sub(v1);
+    let c = edge1.cross(&vp1);
+    if n.dot(&c) < 0.0 {
+        return false; // P is on the wrong side
+    }
+
+    // edge 2
+    let edge2 = v0.sub(v2);
+    let vp2 = p.sub(v2);
+    let c = edge2.cross(&vp2);
+    if n.dot(&c) < 0.0 {
+        return false; // P is on the wrong side;
+    }
+
+    true // this ray hits the triangle
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,6 +226,40 @@ mod tests {
             assert!(!dist.is_nan());
             assert!(float_cmp::approx_eq!(f32, dist, baseline_dist, ulps = 5, epsilon = 1e-3));
         }
+    }
+
+    #[test]
+    fn test_ray_triangle_intersection() {
+        let a = [0.0, 1.0, 0.0];
+        let b = [1.0, 0.0, 0.0];
+        let c = [0.0, 0.0, 1.0];
+
+        let ray_origin = [0.2, 0.2, 0.2];
+        let mut ray_dir;
+
+        ray_dir = [0.0, 0.0, 1.0];
+        assert!(ray_triangle_intersection(&ray_origin, &ray_dir, &a, &b, &c));
+
+        ray_dir = [0.0, 0.0, -1.0];
+        assert!(!ray_triangle_intersection(
+            &ray_origin,
+            &ray_dir,
+            &a,
+            &b,
+            &c
+        ));
+
+        ray_dir = [0.3, 1.0, 0.2];
+        assert!(ray_triangle_intersection(&ray_origin, &ray_dir, &a, &b, &c));
+
+        ray_dir = [0.3, -1.0, -0.2];
+        assert!(!ray_triangle_intersection(
+            &ray_origin,
+            &ray_dir,
+            &a,
+            &b,
+            &c
+        ));
     }
 
     /// Find the distance x0 is from triangle x1-x2-x3.

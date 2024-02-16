@@ -35,6 +35,10 @@ impl Point for cgmath::Vector3<f32> {
     fn dot(&self, other: &Self) -> f32 {
         cgmath::InnerSpace::dot(*self, *other)
     }
+    /// Cross product of two points.
+    fn cross(&self, other: &Self) -> Self {
+        cgmath::Vector3::cross(*self, *other)
+    }
     /// Length of the point.
     fn length(&self) -> f32 {
         self.magnitude()
