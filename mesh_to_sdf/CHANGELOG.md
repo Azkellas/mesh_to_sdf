@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2024-02-16
+
 ### Added
 
 - `SignMethod` enum to represent the sign method used to calculate the signed distance.

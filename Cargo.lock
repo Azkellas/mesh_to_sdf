@@ -2166,7 +2166,7 @@ dependencies = [
 
 [[package]]
 name = "mesh_to_sdf"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cgmath",
  "criterion",
@@ -2185,7 +2185,7 @@ dependencies = [
 
 [[package]]
 name = "mesh_to_sdf_client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bytemuck",
