@@ -15,6 +15,14 @@ pub fn triangle_bounding_box<V: Point>(a: &V, b: &V, c: &V) -> (V, V) {
     (min, max)
 }
 
+/// Compute the distance between a point and a triangle.
+/// The result is always positive.
+pub fn point_triangle_distance<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) -> f32 {
+    // Compute the unsigned distance from the point to the plane of the triangle
+    let nearest = closest_point_triangle(x0, x1, x2, x3);
+    x0.dist(&nearest)
+}
+
 /// Compute the signed distance between a point and a triangle.
 /// Sign is positive if the point is outside the mesh, negative if inside.
 /// Assume all normals are pointing outside the mesh.
@@ -128,64 +136,32 @@ fn closest_point_segment<V: Point>(p: &V, a: &V, b: &V) -> V {
     a.add(&ab.fmul(s12))
 }
 
-fn ray_triangle_intersection<V: Point>(
-    ray_origin: &V,
-    ray_dir: &V,
-    v0: &V,
-    v1: &V,
-    v2: &V,
-) -> bool {
-    // compute the plane's normal
-    let v0v1 = v1.sub(v0);
-    let v0v2 = v2.sub(v0);
-    let n = v0v1.cross(&v0v2);
+/// A ray-triangle intersection test where the ray direction is [1.0, 0.0, 0.0].
+/// This is a specialized version of `ray_triangle_intersection_generic` for faster performance.
+/// This is grid aligned to allow for fast grid traversal.
+pub fn ray_triangle_intersection<V: Point>(ray_origin: &V, triangle: [&V; 3]) -> Option<f32> {
+    let edge1 = triangle[1].sub(triangle[0]);
+    let edge2 = triangle[2].sub(triangle[1]);
+    let edge3 = triangle[0].sub(triangle[2]);
 
-    // Step 1: finding projected point P
+    let pu = triangle[0].sub(ray_origin);
+    let pv = triangle[1].sub(ray_origin);
+    let pw = triangle[2].sub(ray_origin);
 
-    // check if the ray and plane are parallel.
-    let n_dot_ray_dir = n.dot(ray_dir);
-    if n_dot_ray_dir.abs() < 0.00001 {
-        // almost 0
-        return false;
+    let u = pu.z() * edge1.y() - pu.y() * edge1.z();
+    let v = pv.z() * edge2.y() - pv.y() * edge2.z();
+    let w = pw.z() * edge3.y() - pw.y() * edge3.z();
+
+    if u < 0.0 && v < 0.0 && w < 0.0 || u > 0.0 && v > 0.0 && w > 0.0 {
+        // u, v, w have the same sign: inside the triangle.
+        let t = (u * pw.x() + v * pu.x() + w * pv.x()) / (u + v + w);
+
+        if t > 0.0 {
+            // ray intersection
+            return Some(t);
+        }
     }
-
-    let d = -n.dot(v0);
-    let t = -(n.dot(ray_origin) + d) / n_dot_ray_dir;
-
-    // check if the triangle is behind the ray
-    if t < 0.0 {
-        return false; // the triangle is behind
-    }
-
-    let p = ray_origin.add(&ray_dir.fmul(t));
-
-    // Step 2: inside-outside test
-
-    // edge 0
-    let edge0 = v1.sub(v0);
-    let vp0 = p.sub(v0);
-    let c = edge0.cross(&vp0);
-    if n.dot(&c) < 0.0 {
-        return false; // P is on the wrong side
-    }
-
-    // edge 1
-    let edge1 = v2.sub(v1);
-    let vp1 = p.sub(v1);
-    let c = edge1.cross(&vp1);
-    if n.dot(&c) < 0.0 {
-        return false; // P is on the wrong side
-    }
-
-    // edge 2
-    let edge2 = v0.sub(v2);
-    let vp2 = p.sub(v2);
-    let c = edge2.cross(&vp2);
-    if n.dot(&c) < 0.0 {
-        return false; // P is on the wrong side;
-    }
-
-    true // this ray hits the triangle
+    None
 }
 
 #[cfg(test)]
@@ -199,7 +175,7 @@ mod tests {
         #![proptest_config(Config::with_cases(1000))]
 
         #[test]
-        fn test_methods(
+        fn test_closest_point_triangle(
             p in prop::array::uniform3(-10.0f32..10.0),
             a in prop::array::uniform3(-10.0f32..10.0),
             b in prop::array::uniform3(-10.0f32..10.0),
@@ -228,8 +204,34 @@ mod tests {
         }
     }
 
+    proptest! {
+        #![proptest_config(Config::with_cases(1000))]
+
+        #[test]
+        fn test_ray_triangle_intersection(
+            p in prop::array::uniform3(-10.0f32..10.0),
+            a in prop::array::uniform3(-10.0f32..10.0),
+            b in prop::array::uniform3(-10.0f32..10.0),
+            c in prop::array::uniform3(-10.0f32..10.0),
+        ) {
+            let dir = [1.0, 0.0, 0.0];
+            let generic_hit = ray_triangle_intersection_generic(&p, &dir, &a, &b, &c);
+            let hit = ray_triangle_intersection(&p, [&a, &b, &c]);
+
+            match (generic_hit, hit) {
+                (None, None) => {}
+                (Some(generic_hit), Some(hit)) => {
+                    assert!(float_cmp::approx_eq!(f32, generic_hit, hit, ulps = 5, epsilon = 1e-3), "generic_hit: {}, hit: {}", generic_hit, hit);
+                }
+                _ => {
+                    panic!("generic_hit: {:?}, hit: {:?}", generic_hit, hit);
+                }
+            }
+        }
+    }
+
     #[test]
-    fn test_ray_triangle_intersection() {
+    fn test_ray_triangle_intersection_generic() {
         let a = [0.0, 1.0, 0.0];
         let b = [1.0, 0.0, 0.0];
         let c = [0.0, 0.0, 1.0];
@@ -238,28 +240,16 @@ mod tests {
         let mut ray_dir;
 
         ray_dir = [0.0, 0.0, 1.0];
-        assert!(ray_triangle_intersection(&ray_origin, &ray_dir, &a, &b, &c));
+        assert!(ray_triangle_intersection_generic(&ray_origin, &ray_dir, &a, &b, &c).is_some());
 
         ray_dir = [0.0, 0.0, -1.0];
-        assert!(!ray_triangle_intersection(
-            &ray_origin,
-            &ray_dir,
-            &a,
-            &b,
-            &c
-        ));
+        assert!(ray_triangle_intersection_generic(&ray_origin, &ray_dir, &a, &b, &c).is_none());
 
         ray_dir = [0.3, 1.0, 0.2];
-        assert!(ray_triangle_intersection(&ray_origin, &ray_dir, &a, &b, &c));
+        assert!(ray_triangle_intersection_generic(&ray_origin, &ray_dir, &a, &b, &c).is_some());
 
         ray_dir = [0.3, -1.0, -0.2];
-        assert!(!ray_triangle_intersection(
-            &ray_origin,
-            &ray_dir,
-            &a,
-            &b,
-            &c
-        ));
+        assert!(ray_triangle_intersection_generic(&ray_origin, &ray_dir, &a, &b, &c).is_none());
     }
 
     /// Find the distance x0 is from triangle x1-x2-x3.
@@ -329,5 +319,67 @@ mod tests {
 
         // and find the distance
         x0.dist(&x1.fmul(s12).add(&x2.fmul(1.0 - s12)))
+    }
+
+    /// A generic ray-triangle intersection test.
+    /// This is a generic version of `ray_triangle_intersection` that works for any ray direction.
+    fn ray_triangle_intersection_generic<V: Point>(
+        ray_origin: &V,
+        ray_dir: &V,
+        v0: &V,
+        v1: &V,
+        v2: &V,
+    ) -> Option<f32> {
+        // compute the plane's normal
+        let v0v1 = v1.sub(v0);
+        let v0v2 = v2.sub(v0);
+        let n = v0v1.cross(&v0v2);
+
+        // Step 1: finding projected point P
+
+        // check if the ray and plane are parallel.
+        let n_dot_ray_dir = n.dot(ray_dir);
+        if n_dot_ray_dir.abs() < 0.00001 {
+            // almost 0
+            return None;
+        }
+
+        let d = -n.dot(v0);
+        let t = -(n.dot(ray_origin) + d) / n_dot_ray_dir;
+
+        // check if the triangle is behind the ray
+        if t < 0.0 {
+            return None; // the triangle is behind
+        }
+
+        let p = ray_origin.add(&ray_dir.fmul(t));
+
+        // Step 2: inside-outside test
+
+        // edge 0
+        let edge0 = v1.sub(v0);
+        let vp0 = p.sub(v0);
+        let c = edge0.cross(&vp0);
+        if n.dot(&c) < 0.0 {
+            return None; // P is on the wrong side
+        }
+
+        // edge 1
+        let edge1 = v2.sub(v1);
+        let vp1 = p.sub(v1);
+        let c = edge1.cross(&vp1);
+        if n.dot(&c) < 0.0 {
+            return None; // P is on the wrong side
+        }
+
+        // edge 2
+        let edge2 = v0.sub(v2);
+        let vp2 = p.sub(v2);
+        let c = edge2.cross(&vp2);
+        if n.dot(&c) < 0.0 {
+            return None; // P is on the wrong side;
+        }
+
+        Some(t) // this ray hits the triangle
     }
 }

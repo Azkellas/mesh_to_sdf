@@ -1,3 +1,4 @@
+//! Benchmark for the `generate_sdf` function
 use itertools::{Itertools, MinMaxResult};
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -56,14 +57,26 @@ fn criterion_benchmark(c: &mut Criterion) {
     println!("vertices: {:?}", vertices.len());
     println!("triangles: {:?}", indices.len() / 3);
 
-    c.bench_function("generate_sdf", |b| {
+    c.bench_function("generate_sdf_normal", |b| {
         b.iter(|| {
             mesh_to_sdf::generate_sdf(
                 black_box(&vertices),
                 black_box(mesh_to_sdf::Topology::TriangleList(Some(indices))),
                 black_box(&query_points),
-            )
-        })
+                black_box(mesh_to_sdf::SignMethod::Normal),
+            );
+        });
+    });
+
+    c.bench_function("generate_sdf_raycast", |b| {
+        b.iter(|| {
+            mesh_to_sdf::generate_sdf(
+                black_box(&vertices),
+                black_box(mesh_to_sdf::Topology::TriangleList(Some(indices))),
+                black_box(&query_points),
+                black_box(mesh_to_sdf::SignMethod::Raycast),
+            );
+        });
     });
 }
 

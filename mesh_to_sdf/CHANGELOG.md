@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- `SignMethod` enum to represent the sign method used to calculate the signed distance.
+- `generate_sdf` and `generate_grid_sdf` now take a `SignMethod` parameter.
+- `SignMethod::Raycast` to use raycasting to determine the sign of the distance.
 
 ## [0.1.0] - 2024-02-05
 

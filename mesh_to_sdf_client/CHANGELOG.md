@@ -5,6 +5,7 @@
 ### Added
 
 - Isosurface control for point cloud, voxels and raymarching visualization.
+- Expose SignMethod enum in UI.
 
 ## [0.1.0] - 2024-02-05
 
