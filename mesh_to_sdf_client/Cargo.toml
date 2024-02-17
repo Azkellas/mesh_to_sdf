@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/Azkellas/mesh_to_sdf"
 description = "A mesh to SDF converter and renderer"
 keywords = ["mesh", "sdf", "distance_field", "raymarching", "voxels"]
+categories = ["algorithms", "rendering::data-formats", "game-development", "graphics", "data-structures"]
 
 exclude = [
     "assets/*",
