@@ -1,3 +1,15 @@
+![License](https://img.shields.io/badge/license-MIT%2FApache-blue.svg)
+[![Latest Version]](https://crates.io/crates/mesh_to_sdf/)
+[![Coverage Status]](https://codecov.io/gh/Azkellas/mesh_to_sdf)
+[![Build Status]](https://github.com/azkellas/mesh_to_sdf/actions/workflows/ci.yml)
+[![docs]](https://docs.rs/mesh_to_sdf/)
+
+[Build Status]: https://github.com/azkellas/mesh_to_sdf/actions/workflows/ci.yml/badge.svg
+[Coverage Status]: https://codecov.io/gh/Azkellas/mesh_to_sdf/graph/badge.svg?token=EKRNLUC7DH
+[Latest Version]: https://img.shields.io/crates/v/mesh_to_sdf.svg
+[docs]: https://docs.rs/mesh_to_sdf/badge.svg
+
+
 # Mesh to SDF
 
 ![](client.gif)
