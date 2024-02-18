@@ -129,32 +129,68 @@ fn closest_point_segment<V: Point>(p: &V, a: &V, b: &V) -> V {
     let m = ab.dot(&ab);
 
     // find parameter value of closest point on segment
-    let pb = p.sub(b);
-    let mut s12 = ab.dot(&pb) / m;
+    let ap = p.sub(a);
+    let mut s12 = ab.dot(&ap) / m;
     s12 = s12.clamp(0.0, 1.0);
 
     a.add(&ab.fmul(s12))
 }
 
+/// Grid alignment for raycast.
+/// Used exclusively in `ray_triangle_intersection_aligned`.
+pub enum GridAlign {
+    X,
+    Y,
+    Z,
+}
+
 /// A ray-triangle intersection test where the ray direction is [1.0, 0.0, 0.0].
 /// This is a specialized version of `ray_triangle_intersection_generic` for faster performance.
 /// This is grid aligned to allow for fast grid traversal.
-pub fn ray_triangle_intersection<V: Point>(ray_origin: &V, triangle: [&V; 3]) -> Option<f32> {
-    let edge1 = triangle[1].sub(triangle[0]);
-    let edge2 = triangle[2].sub(triangle[1]);
-    let edge3 = triangle[0].sub(triangle[2]);
+pub fn ray_triangle_intersection_aligned<V: Point>(
+    ray_origin: &V,
+    triangle: [&V; 3],
+    alignment: GridAlign,
+) -> Option<f32> {
+    let edge01 = triangle[1].sub(triangle[0]);
+    let edge12 = triangle[2].sub(triangle[1]);
+    let edge20 = triangle[0].sub(triangle[2]);
 
-    let pu = triangle[0].sub(ray_origin);
-    let pv = triangle[1].sub(ray_origin);
-    let pw = triangle[2].sub(ray_origin);
+    let p0 = ray_origin.sub(triangle[0]);
+    let p1 = ray_origin.sub(triangle[1]);
+    let p2 = ray_origin.sub(triangle[2]);
 
-    let u = pu.z() * edge1.y() - pu.y() * edge1.z();
-    let v = pv.z() * edge2.y() - pv.y() * edge2.z();
-    let w = pw.z() * edge3.y() - pw.y() * edge3.z();
+    // While named get_x, get_y, get_z, they are rotated around the grid alignment.
+    // x is the ray direction axis.
+    // (y, z) is the triangle projection plane.
+    let get_y = match alignment {
+        GridAlign::X => |v: &V| v.y(),
+        GridAlign::Y => |v: &V| v.z(),
+        GridAlign::Z => |v: &V| v.x(),
+    };
+    let get_z = match alignment {
+        GridAlign::X => |v: &V| v.z(),
+        GridAlign::Y => |v: &V| v.x(),
+        GridAlign::Z => |v: &V| v.y(),
+    };
+    let get_x = match alignment {
+        GridAlign::X => |v: &V| v.x(),
+        GridAlign::Y => |v: &V| v.y(),
+        GridAlign::Z => |v: &V| v.z(),
+    };
 
-    if u < 0.0 && v < 0.0 && w < 0.0 || u > 0.0 && v > 0.0 && w > 0.0 {
-        // u, v, w have the same sign: inside the triangle.
-        let t = (u * pw.x() + v * pu.x() + w * pv.x()) / (u + v + w);
+    // 2d cross products on the triangle projection plane.
+    // the weight of vertex 0 is the cross product between ray-vert1 and edge12.
+    let w0 = get_z(&p1) * get_y(&edge12) - get_y(&p1) * get_z(&edge12);
+    let w1 = get_z(&p2) * get_y(&edge20) - get_y(&p2) * get_z(&edge20);
+    let w2 = get_z(&p0) * get_y(&edge01) - get_y(&p0) * get_z(&edge01);
+
+    if w0 < 0.0 && w1 < 0.0 && w2 < 0.0 || w0 > 0.0 && w1 > 0.0 && w2 > 0.0 {
+        // the weights have the same sign: inside the triangle.
+        // compute the intersection point.
+        // barycenteric coordinates.
+        // we negate it since the p_i are vert_i -> ray_origin.
+        let t = -(w0 * get_x(&p0) + w2 * get_x(&p2) + w1 * get_x(&p1)) / (w0 + w1 + w2);
 
         if t > 0.0 {
             // ray intersection
@@ -214,17 +250,22 @@ mod tests {
             b in prop::array::uniform3(-10.0f32..10.0),
             c in prop::array::uniform3(-10.0f32..10.0),
         ) {
-            let dir = [1.0, 0.0, 0.0];
-            let generic_hit = ray_triangle_intersection_generic(&p, &dir, &a, &b, &c);
-            let hit = ray_triangle_intersection(&p, [&a, &b, &c]);
+            for (align, dir) in [
+                (GridAlign::X, [1.0, 0.0, 0.0]),
+                (GridAlign::Y, [0.0, 1.0, 0.0]),
+                (GridAlign::Z, [0.0, 0.0, 1.0]),
+            ] {
+                let generic_hit = ray_triangle_intersection_generic(&p, &dir, &a, &b, &c);
+                let hit = ray_triangle_intersection_aligned(&p, [&a, &b, &c], align);
 
-            match (generic_hit, hit) {
-                (None, None) => {}
-                (Some(generic_hit), Some(hit)) => {
-                    assert!(float_cmp::approx_eq!(f32, generic_hit, hit, ulps = 5, epsilon = 1e-3), "generic_hit: {}, hit: {}", generic_hit, hit);
-                }
-                _ => {
-                    panic!("generic_hit: {:?}, hit: {:?}", generic_hit, hit);
+                match (generic_hit, hit) {
+                    (None, None) => {}
+                    (Some(generic_hit), Some(hit)) => {
+                        assert!(float_cmp::approx_eq!(f32, generic_hit, hit, ulps = 5, epsilon = 1e-3), "generic_hit: {}, hit: {}", generic_hit, hit);
+                    }
+                    _ => {
+                        panic!("generic_hit: {:?}, hit: {:?}", generic_hit, hit);
+                    }
                 }
             }
         }
@@ -250,6 +291,20 @@ mod tests {
 
         ray_dir = [0.3, -1.0, -0.2];
         assert!(ray_triangle_intersection_generic(&ray_origin, &ray_dir, &a, &b, &c).is_none());
+    }
+
+    #[test]
+    fn test_closest_point_segment() {
+        let a = [0.0, 0.0, 0.0];
+        let b = [1.0, 0.0, 0.0];
+
+        let p = [0.3, 1.0, 0.0];
+        let closest = closest_point_segment(&p, &a, &b);
+        assert_eq!(closest, [0.3, 0.0, 0.0]);
+
+        let p = [10.3, 1.0, 10.0];
+        let closest = closest_point_segment(&p, &a, &b);
+        assert_eq!(closest, [1.0, 0.0, 0.0]);
     }
 
     /// Find the distance x0 is from triangle x1-x2-x3.

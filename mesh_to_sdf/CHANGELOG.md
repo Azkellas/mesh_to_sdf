@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `generate_grid_sdf` with `SignMethod::Raycast` now tests in the three directions (+x, +y, +z). This does not slow the computation down, but it makes the result more robust. This does not affect `generate_sdf`. 
+- `Grid::from_bounding_box` takes a `[usize; 3]` instead of `&[usize; 3]` for `cell_count`
+
+
 ## [0.2.0] - 2024-02-16
 
 ### Added

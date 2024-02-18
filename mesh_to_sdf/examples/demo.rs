@@ -43,7 +43,7 @@ fn main() {
     let cell_count = [3_usize, 3, 3];
 
     let grid =
-        mesh_to_sdf::Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, &cell_count);
+        mesh_to_sdf::Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, cell_count);
 
     let sdf: Vec<f32> = mesh_to_sdf::generate_grid_sdf(
         &vertices,

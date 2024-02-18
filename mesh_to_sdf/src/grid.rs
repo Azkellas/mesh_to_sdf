@@ -44,27 +44,27 @@ impl<V: Point> Grid<V> {
     }
 
     /// Create a new grid from a bounding box.
-    /// - `min_cell` is the minimum corner of the bounding box.
-    /// - `max_cell` is the maximum corner of the bounding box.
+    /// - `bbox_min` is the minimum corner of the bounding box.
+    /// - `bbox_max` is the maximum corner of the bounding box.
     /// - `cell_count` is the number of cells in each direction.
     ///
     /// The grid will be centered in the bounding box.
     /// The size of a cell will be `bounding_box_size / cell_count`.
     /// The first cell will be at `min_cell + cell_size / 2`.
-    pub fn from_bounding_box(min_cell: &V, max_cell: &V, cell_count: &[usize; 3]) -> Self {
+    pub fn from_bounding_box(bbox_min: &V, bbox_max: &V, cell_count: [usize; 3]) -> Self {
         let fcell_count = V::new(
             cell_count[0] as f32,
             cell_count[1] as f32,
             cell_count[2] as f32,
         );
-        let cell_size = max_cell.sub(min_cell).comp_div(&fcell_count);
+        let cell_size = bbox_max.sub(bbox_min).comp_div(&fcell_count);
         // We add half a cell size to the first cell to center it.
-        let first_cell = min_cell.add(&cell_size.fmul(0.5));
+        let first_cell = bbox_min.add(&cell_size.fmul(0.5));
 
         Self {
             first_cell,
             cell_size,
-            cell_count: *cell_count,
+            cell_count,
         }
     }
 
@@ -163,11 +163,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_new() {
+        let first_cell = [0.1, 0.2, 0.3];
+        let cell_size = [1.1, 1.2, 1.3];
+        let cell_count = [11, 12, 13];
+        let grid = Grid::new(first_cell, cell_size, cell_count);
+        assert_eq!(grid.first_cell, [0.1, 0.2, 0.3]);
+        assert_eq!(grid.cell_size, [1.1, 1.2, 1.3]);
+        assert_eq!(grid.cell_count, [11, 12, 13]);
+    }
+
+    #[test]
+    fn test_first_last_cells() {
+        let first_cell = [0.0, 1.0, 2.0];
+        let cell_size = [1.0, 2.0, 3.0];
+        let cell_count = [10, 20, 30];
+        let grid = Grid::new(first_cell, cell_size, cell_count);
+        assert_eq!(grid.get_first_cell(), [0.0, 1.0, 2.0]);
+        assert_eq!(grid.get_last_cell(), [10.0, 41.0, 92.0]);
+    }
+
+    #[test]
     fn test_from_bounding_box() {
         let min_cell = [-1.0, 0.0, 1.0];
         let max_cell = [0.0, 2.0, 5.0];
         let cell_count = [2, 2, 2];
-        let grid = Grid::from_bounding_box(&min_cell, &max_cell, &cell_count);
+        let grid = Grid::from_bounding_box(&min_cell, &max_cell, cell_count);
         assert_eq!(grid.first_cell, [-0.75, 0.5, 2.]);
         assert_eq!(grid.cell_size, [0.5, 1., 2.]);
         assert_eq!(grid.cell_count, [2, 2, 2]);
@@ -180,7 +201,7 @@ mod tests {
         let min_cell = [0.0, 0.0, 0.0];
         let max_cell = [1.0, 1.0, 1.0];
         let cell_count = [2, 2, 2];
-        let grid = Grid::from_bounding_box(&min_cell, &max_cell, &cell_count);
+        let grid = Grid::from_bounding_box(&min_cell, &max_cell, cell_count);
 
         assert_eq!(
             grid.snap_point_to_grid(&[0.4, 0.8, 0.1]),
@@ -208,7 +229,7 @@ mod tests {
         let min_cell = [0.0, 0.0, 0.0];
         let max_cell = [1.0, 1.0, 1.0];
         let cell_count = [2, 2, 2];
-        let grid = Grid::from_bounding_box(&min_cell, &max_cell, &cell_count);
+        let grid = Grid::from_bounding_box(&min_cell, &max_cell, cell_count);
 
         assert_eq!(grid.get_cell_idx(&[0, 0, 0]), 0);
         assert_eq!(grid.get_cell_idx(&[0, 0, 1]), 1);
@@ -225,7 +246,7 @@ mod tests {
         let min_cell = [0.0, 0.0, 0.0];
         let max_cell = [1.0, 1.0, 1.0];
         let cell_count = [2, 2, 2];
-        let grid = Grid::from_bounding_box(&min_cell, &max_cell, &cell_count);
+        let grid = Grid::from_bounding_box(&min_cell, &max_cell, cell_count);
 
         assert_eq!(grid.get_cell_center(&[0, 0, 0]), [0.25, 0.25, 0.25]);
         assert_eq!(grid.get_cell_center(&[0, 0, 1]), [0.25, 0.25, 0.75]);

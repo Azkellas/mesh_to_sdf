@@ -16,10 +16,6 @@ fn criterion_benchmark(c: &mut Criterion) {
     let ybounds = vertices.iter().map(|v| v.position.y).minmax();
     let zbounds = vertices.iter().map(|v| v.position.z).minmax();
 
-    println!("x bounds: {:?}", xbounds);
-    println!("y bounds: {:?}", ybounds);
-    println!("z bounds: {:?}", zbounds);
-
     let MinMaxResult::MinMax(xmin, xmax) = xbounds else {
         panic!("No vertices");
     };
@@ -31,7 +27,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     };
 
     // generate points in x,y,z bounds with a cell radius of cell_radius
-    let cell_radius = 0.02;
+    let cell_radius = 0.01;
     let mut query_points = vec![];
     let xsize = ((xmax - xmin) / cell_radius).ceil();
     let ysize = ((ymax - ymin) / cell_radius).ceil();

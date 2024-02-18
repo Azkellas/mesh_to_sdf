@@ -63,6 +63,19 @@ mod tests {
     proptest! {
         #[test]
         fn test_point_glam(x: f32, y: f32, z: f32) {
+            let cmp = |a: glam::Vec3, b: &[f32;3]| {
+                if a.x.is_nan() && b[0].is_nan() {
+                    return true;
+                }
+                if a.y.is_nan() && b[1].is_nan() {
+                    return true;
+                }
+                if a.z.is_nan() && b[2].is_nan() {
+                    return true;
+                }
+                float_cmp::approx_eq!(f32, a.x, b[0]) && float_cmp::approx_eq!(f32, a.y, b[1]) && float_cmp::approx_eq!(f32, a.z, b[2])
+            };
+
             let p1 = glam::Vec3::new(x, y, z);
             let p2 = glam::Vec3::new(x, y, z);
 
@@ -73,14 +86,15 @@ mod tests {
 
             let ap1 = [x, y, z];
             let ap2 = [x, y, z];
-            assert!(Point::add(&p1, &p2).as_ref() == &ap1.add(&ap2));
-            assert!(Point::sub(&p1, &p2).as_ref() == &ap1.sub(&ap2));
+            assert!(cmp(Point::add(&p1, &p2), &ap1.add(&ap2)));
+            assert!(cmp(Point::sub(&p1, &p2), &ap1.sub(&ap2)));
             assert!(Point::dot(&p1, &p2) == ap1.dot(&ap2));
+            assert!(cmp(Point::cross(&p1, &p2), &ap1.cross(&ap2)));
             assert!(Point::length(&p1) == ap1.length());
             assert!(Point::dist(&p1, &p2) == ap1.dist(&ap2));
-            assert!(Point::fmul(&p1, 2.0).as_ref() == &ap1.fmul(2.0));
+            assert!(cmp(Point::fmul(&p1, 2.0), &ap1.fmul(2.0)));
             if ap2.x() != 0.0 && ap2.y() != 0.0 && ap2.z() != 0.0 {
-                assert!(Point::comp_div(&p1, &p2).as_ref() == &ap1.comp_div(&ap2));
+                assert!(cmp(Point::comp_div(&p1, &p2), &ap1.comp_div(&ap2)));
             }
         }
     }

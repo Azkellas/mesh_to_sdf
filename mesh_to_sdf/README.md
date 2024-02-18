@@ -36,7 +36,7 @@ let bounding_box_min = [0., 0., 0.];
 let bounding_box_max = [10., 10., 10.];
 let cell_count = [10, 10, 10];
 
-let grid = Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, &cell_count);
+let grid = Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, cell_count);
 
 let sdf: Vec<f32> = generate_grid_sdf(
     &vertices,

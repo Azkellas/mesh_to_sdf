@@ -45,7 +45,7 @@ impl Sdf {
             cell_count[1] as usize,
             cell_count[2] as usize,
         ];
-        let grid = mesh_to_sdf::Grid::from_bounding_box(start_cell, end_cell, &ucell_count);
+        let grid = mesh_to_sdf::Grid::from_bounding_box(start_cell, end_cell, ucell_count);
         let data = mesh_to_sdf::generate_grid_sdf(
             vertices,
             mesh_to_sdf::Topology::TriangleList(Some(indices)),

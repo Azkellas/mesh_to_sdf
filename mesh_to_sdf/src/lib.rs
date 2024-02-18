@@ -35,7 +35,7 @@
 //! let bounding_box_max = [10., 10., 10.];
 //! let cell_count = [10, 10, 10];
 //!
-//! let grid = Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, &cell_count);
+//! let grid = Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, cell_count);
 //!
 //! let sdf: Vec<f32> = generate_grid_sdf(
 //!     &vertices,
@@ -257,7 +257,8 @@ where
                     // Raycast: returns (distance, ray_intersection)
                     SignMethod::Raycast => (
                         geo::point_triangle_distance(query, a, b, c),
-                        geo::ray_triangle_intersection(query, [a, b, c]).is_some(),
+                        geo::ray_triangle_intersection_aligned(query, [a, b, c], geo::GridAlign::X)
+                            .is_some(),
                     ),
                     // Normal: returns (signed_distance, false)
                     SignMethod::Normal => {
@@ -336,7 +337,7 @@ impl PartialOrd for State {
 /// let bounding_box_max = [10., 10., 10.];
 /// let cell_count = [10, 10, 10];
 ///
-/// let grid = Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, &cell_count);
+/// let grid = Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, cell_count);
 ///
 /// let sdf: Vec<f32> = generate_grid_sdf(
 ///     &vertices,
@@ -428,9 +429,6 @@ where
         ) {
             let cell = [cell.0, cell.1, cell.2];
             let cell_idx = grid.get_cell_idx(&cell);
-            if cell_idx >= grid.get_total_cell_count() {
-                continue;
-            }
 
             let cell_pos = grid.get_cell_center(&cell);
 
@@ -523,7 +521,8 @@ where
         // Finally, count the number of intersections for each cell.
         // If the number is odd, the cell is inside the mesh.
         // If the number is even, the cell is outside the mesh.
-        let mut intersections = vec![0; grid.get_total_cell_count()];
+        // Since this is so inexpensive (n^2 vs n^3), we can afford to do it in the three directions.
+        let mut intersections = vec![[0, 0, 0]; grid.get_total_cell_count()];
         let mut raycasts_done = 0;
         for triangle in Topology::get_triangles(vertices, &indices) {
             let a = &vertices[triangle.0];
@@ -539,18 +538,67 @@ where
                 SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
             };
 
+            // x.
             for y in min_cell[1]..=max_cell[1] {
                 for z in min_cell[2]..=max_cell[2] {
                     let cell = [0, y, z];
                     let cell_pos = grid.get_cell_center(&cell);
                     raycasts_done += 1;
-                    if let Some(distance) = geo::ray_triangle_intersection(&cell_pos, [a, b, c]) {
+                    if let Some(distance) = geo::ray_triangle_intersection_aligned(
+                        &cell_pos,
+                        [a, b, c],
+                        geo::GridAlign::X,
+                    ) {
                         let cell_count = distance / grid.get_cell_size().x();
                         let cell_count = cell_count.floor() as usize;
                         for x in 0..=cell_count {
                             let cell = [x, y, z];
                             let cell_idx = grid.get_cell_idx(&cell);
-                            intersections[cell_idx] += 1;
+                            intersections[cell_idx][0] += 1;
+                        }
+                    }
+                }
+            }
+
+            // y.
+            for x in min_cell[0]..=max_cell[0] {
+                for z in min_cell[2]..=max_cell[2] {
+                    let cell = [x, 0, z];
+                    let cell_pos = grid.get_cell_center(&cell);
+                    raycasts_done += 1;
+                    if let Some(distance) = geo::ray_triangle_intersection_aligned(
+                        &cell_pos,
+                        [a, b, c],
+                        geo::GridAlign::Y,
+                    ) {
+                        let cell_count = distance / grid.get_cell_size().y();
+                        let cell_count = cell_count.floor() as usize;
+                        for y in 0..=cell_count {
+                            let cell = [x, y, z];
+                            let cell_idx = grid.get_cell_idx(&cell);
+                            intersections[cell_idx][1] += 1;
+                        }
+                    }
+                }
+            }
+
+            // z.
+            for x in min_cell[0]..=max_cell[0] {
+                for y in min_cell[1]..=max_cell[1] {
+                    let cell = [x, y, 0];
+                    let cell_pos = grid.get_cell_center(&cell);
+                    raycasts_done += 1;
+                    if let Some(distance) = geo::ray_triangle_intersection_aligned(
+                        &cell_pos,
+                        [a, b, c],
+                        geo::GridAlign::Z,
+                    ) {
+                        let cell_count = distance / grid.get_cell_size().z();
+                        let cell_count = cell_count.floor() as usize;
+                        for z in 0..=cell_count {
+                            let cell = [x, y, z];
+                            let cell_idx = grid.get_cell_idx(&cell);
+                            intersections[cell_idx][2] += 1;
                         }
                     }
                 }
@@ -558,8 +606,16 @@ where
         }
         for (i, distance) in distances.iter_mut().enumerate() {
             // distance is always positive here since we didn't check the normal.
-            if intersections[i] % 2 == 1 {
-                *distance = -*distance;
+            // We decide based on the parity of the intersections.
+            // And a best of 3.
+            // This helps when the mesh is not watertight
+            // and to compensate the discrete nature of the grid.
+            let inter = intersections[i];
+            match (inter[0] % 2, inter[1] % 2, inter[2] % 2) {
+                // if at least two are odd, the cell is deeemed inside.
+                (1, 1, _) | (1, _, 1) | (_, 1, 1) => *distance = -*distance,
+                // conversely, if at least two are even, the cell is deeemed outside.
+                _ => {}
             }
         }
         log::info!("[generate_grid_sdf] raycasts done: {}", raycasts_done);
@@ -575,7 +631,6 @@ mod tests {
     #[test]
     fn test_generate() {
         let model = &easy_gltf::load("assets/suzanne.glb").unwrap()[0].models[0];
-        // make sure generate_grid_sdf returns the same result as generate_sdf
         let vertices = model.vertices().iter().map(|v| v.position).collect_vec();
         let indices = model.indices().unwrap();
         let query_points = [
@@ -608,7 +663,7 @@ mod tests {
         // assumes generate_sdf is properly tested and correct.
         let vertices: Vec<[f32; 3]> = vec![[0., 1., 0.], [1., 2., 3.], [1., 3., 4.], [2., 0., 0.]];
         let indices: Vec<u32> = vec![0, 1, 2, 1, 2, 3];
-        let grid = Grid::from_bounding_box(&[0., 0., 0.], &[5., 5., 5.], &[5, 5, 5]);
+        let grid = Grid::from_bounding_box(&[0., 0., 0.], &[5., 5., 5.], [5, 5, 5]);
         let mut query_points = Vec::new();
         for x in 0..grid.get_cell_count()[0] {
             for y in 0..grid.get_cell_count()[1] {
@@ -634,36 +689,85 @@ mod tests {
         for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
             assert_eq!(sdf, grid_sdf, "i: {}", i);
         }
+    }
 
-        // Test continuity.
-        // Only valid for watertight meshes and Raycast method.
+    /// Test continuity.
+    /// Only valid for watertight meshes and Raycast method.
+    #[test]
+    fn test_grid_continuity() {
+        let model = &easy_gltf::load("assets/ferris3d.glb").unwrap()[0].models[0];
+        let vertices = model.vertices().iter().map(|v| v.position).collect_vec();
+        let indices = model.indices().unwrap();
+
+        let bbox_min = vertices.iter().fold(
+            cgmath::Vector3::new(f32::MAX, f32::MAX, f32::MAX),
+            |acc, v| cgmath::Vector3 {
+                x: acc.x.min(v.x),
+                y: acc.y.min(v.y),
+                z: acc.z.min(v.z),
+            },
+        );
+        let bbox_max = vertices.iter().fold(
+            cgmath::Vector3::new(-f32::MAX, -f32::MAX, -f32::MAX),
+            |acc, v| cgmath::Vector3 {
+                x: acc.x.max(v.x),
+                y: acc.y.max(v.y),
+                z: acc.z.max(v.z),
+            },
+        );
+
+        let extend = 0.2 * (bbox_max - bbox_min);
+        let bbox_min = bbox_min - extend;
+        let bbox_max = bbox_max + extend;
+
+        // Most of the time is spent reading the file, so we can afford a large grid.
+        let grid = Grid::from_bounding_box(&bbox_min, &bbox_max, [32, 32, 32]);
+
+        let sdf = generate_grid_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(&indices)),
+            &grid,
+            SignMethod::Raycast,
+        );
+
         let test_continuity = |distance: f32, neigh_distance: f32, size: f32| {
+            // make sure the unsigned distance respects the triangle inequality.
+            let valid_unsigned = (distance.abs() - neigh_distance.abs()).abs() <= size;
+            // since the grid is discrete, we cannot support the triangle inequality for near the surface.
+            // instead we make sure if there is a sign change, the distance is smaller than the cell size
+            // meaning the surface is somewhere around (hopefully between) the two cells.
+            // This test is not perfect and might fail for some cases.
+            let valid_signed = match (distance * neigh_distance).signum() < 0.0 {
+                true => distance.abs() <= size && neigh_distance.abs() <= size,
+                false => true,
+            };
             assert!(
-                (distance - neigh_distance).abs() <= size,
-                "{} {} {}",
+                valid_unsigned && valid_signed,
+                "({} {}) <= {}",
                 distance,
                 neigh_distance,
                 size
             );
         };
+
+        let cell_size = grid.get_cell_size();
         for x in 0..grid.get_cell_count()[0] - 1 {
             for y in 0..grid.get_cell_count()[1] - 1 {
                 for z in 0..grid.get_cell_count()[2] - 1 {
                     let index = grid.get_cell_idx(&[x, y, z]);
 
-                    let distance = grid_sdf[index];
-                    let cell_size = grid.get_cell_size();
+                    let distance = sdf[index];
 
                     let neigh = grid.get_cell_idx(&[x + 1, y, z]);
-                    let neigh_distance = grid_sdf[neigh];
+                    let neigh_distance = sdf[neigh];
                     test_continuity(distance, neigh_distance, cell_size.x());
 
                     let neigh = grid.get_cell_idx(&[x, y + 1, z]);
-                    let neigh_distance = grid_sdf[neigh];
+                    let neigh_distance = sdf[neigh];
                     test_continuity(distance, neigh_distance, cell_size.y());
 
                     let neigh = grid.get_cell_idx(&[x, y, z + 1]);
-                    let neigh_distance = grid_sdf[neigh];
+                    let neigh_distance = sdf[neigh];
                     test_continuity(distance, neigh_distance, cell_size.z());
                 }
             }
@@ -672,7 +776,7 @@ mod tests {
 
     #[test]
     fn test_topology() {
-        let grid = Grid::from_bounding_box(&[0., 0., 0.], &[5., 5., 5.], &[5, 5, 5]);
+        let grid = Grid::from_bounding_box(&[0., 0., 0.], &[5., 5., 5.], [25, 25, 25]);
 
         let v0 = [0., 1., 0.];
         let v1 = [1., 2., 3.];

@@ -86,7 +86,16 @@ mod tests {
         #[test]
         fn test_point_nalgebra_point3(x: f32, y: f32, z: f32) {
             let cmp = |a: nalgebra::Point3<f32>, b: [f32;3]| {
-                a.x == b[0] && a.y == b[1] && a.z == b[2]
+                if a.x.is_nan() && b[0].is_nan() {
+                    return true;
+                }
+                if a.y.is_nan() && b[1].is_nan() {
+                    return true;
+                }
+                if a.z.is_nan() && b[2].is_nan() {
+                    return true;
+                }
+                float_cmp::approx_eq!(f32, a.x, b[0]) && float_cmp::approx_eq!(f32, a.y, b[1]) && float_cmp::approx_eq!(f32, a.z, b[2])
             };
             let p1 = nalgebra::Point3::new(x, y, z);
             let p2 = nalgebra::Point3::new(x, y, z);
@@ -101,6 +110,7 @@ mod tests {
             assert!(cmp(Point::add(&p1, &p2), ap1.add(&ap2)));
             assert!(cmp(Point::sub(&p1, &p2), ap1.sub(&ap2)));
             assert!(Point::dot(&p1, &p2) == ap1.dot(&ap2));
+            assert!(cmp(Point::cross(&p1, &p2), ap1.cross(&ap2)));
             assert!(Point::length(&p1) == ap1.length());
             assert!(Point::dist(&p1, &p2) == ap1.dist(&ap2));
             assert!(cmp(Point::fmul(&p1, 2.0), ap1.fmul(2.0)));
@@ -114,6 +124,15 @@ mod tests {
         #[test]
         fn test_point_nalgebra_vector3(x: f32, y: f32, z: f32) {
             let cmp = |a: nalgebra::Vector3<f32>, b: [f32;3]| {
+                if a.x.is_nan() && b[0].is_nan() {
+                    return true;
+                }
+                if a.y.is_nan() && b[1].is_nan() {
+                    return true;
+                }
+                if a.z.is_nan() && b[2].is_nan() {
+                    return true;
+                }
                 a.x == b[0] && a.y == b[1] && a.z == b[2]
             };
             let p1 = nalgebra::Vector3::new(x, y, z);
@@ -129,6 +148,7 @@ mod tests {
             assert!(cmp(Point::add(&p1, &p2), ap1.add(&ap2)));
             assert!(cmp(Point::sub(&p1, &p2), ap1.sub(&ap2)));
             assert!(Point::dot(&p1, &p2) == ap1.dot(&ap2));
+            assert!(cmp(Point::cross(&p1, &p2), ap1.cross(&ap2)));
             assert!(Point::length(&p1) == ap1.length());
             assert!(Point::dist(&p1, &p2) == ap1.dist(&ap2));
             assert!(cmp(Point::fmul(&p1, 2.0), ap1.fmul(2.0)));

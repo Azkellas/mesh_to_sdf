@@ -16,10 +16,6 @@ fn criterion_benchmark(c: &mut Criterion) {
     let ybounds = vertices.iter().map(|v| v.position.y).minmax();
     let zbounds = vertices.iter().map(|v| v.position.z).minmax();
 
-    println!("x bounds: {:?}", xbounds);
-    println!("y bounds: {:?}", ybounds);
-    println!("z bounds: {:?}", zbounds);
-
     let MinMaxResult::MinMax(xmin, xmax) = xbounds else {
         panic!("No vertices");
     };
@@ -30,25 +26,18 @@ fn criterion_benchmark(c: &mut Criterion) {
         panic!("No vertices");
     };
 
-    // generate points in x,y,z bounds with a cell radius of cell_radius
-    let cell_radius = 0.02;
-    let xsize = ((xmax - xmin) / cell_radius).ceil();
-    let ysize = ((ymax - ymin) / cell_radius).ceil();
-    let zsize = ((zmax - zmin) / cell_radius).ceil();
-
     let vertices = vertices
         .iter()
         .map(|v| [v.position.x, v.position.y, v.position.y])
         .collect_vec();
 
+    let cell_count = [16, 16, 16];
+    let grid =
+        mesh_to_sdf::Grid::from_bounding_box(&[xmin, ymin, zmin], &[xmax, ymax, zmax], cell_count);
+
     println!("vertices: {:?}", vertices.len());
     println!("triangles: {:?}", indices.len() / 3);
-
-    let grid = mesh_to_sdf::Grid::from_bounding_box(
-        &[xmin, ymin, zmin],
-        &[xmax, ymax, zmax],
-        &[xsize as usize, ysize as usize, zsize as usize],
-    );
+    println!("grid size: {cell_count:?}");
 
     c.bench_function("generate_grid_sdf_normal", |b| {
         b.iter(|| {
