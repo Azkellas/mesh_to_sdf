@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+
+## [0.2.1] - 2024-02-18
+
+Update `mesh_to_sdf` dependency to `0.2.1` since it had a breaking change.
+
+
 ## [0.2.0] - 2024-02-16
 
 ### Added

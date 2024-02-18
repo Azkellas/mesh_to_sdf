@@ -88,7 +88,7 @@
 //! To use your favorite math library with `mesh_to_sdf`, you need to add it to `mesh_to_sdf` dependency. For example, to use `glam`:
 //! ```toml
 //! [dependencies]
-//! mesh_to_sdf = { version = "0.2.0", features = ["glam"] }
+//! mesh_to_sdf = { version = "0.2.1", features = ["glam"] }
 //! ```
 //!
 //! Currently, the following libraries are supported:

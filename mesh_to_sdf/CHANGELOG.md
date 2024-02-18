@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2024-02-18
+
 ### Changed
 
 - `generate_grid_sdf` with `SignMethod::Raycast` now tests in the three directions (+x, +y, +z). This does not slow the computation down, but it makes the result more robust. This does not affect `generate_sdf`. 
