@@ -52,7 +52,7 @@ console_log = "1.0.0"
 wasm-bindgen = "0.2.91"
 
 [target.'cfg(target_env = "musl")'.dependencies]
-rfd = {version = "0.13.0", default-features = false, features = ["async-std", "xdg-portal", "file-handle-inner"] }
+rfd = {version = "0.14.0", default-features = false, features = ["async-std", "xdg-portal", "file-handle-inner"] }
 
 [target.'cfg(not(target_env = "musl"))'.dependencies]
 rfd = {version = "0.13.0", default-features = true, features = ["file-handle-inner"] }
