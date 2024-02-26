@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@master
       - name: Compile and release
-        uses: rust-build/rust-build.action@v1.4.4
+        uses: rust-build/rust-build.action@v1.4.5
         env:
           SRC_DIR: "mesh_to_sdf_client"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
