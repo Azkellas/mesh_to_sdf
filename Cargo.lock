@@ -1030,9 +1030,9 @@ dependencies = [
 
 [[package]]
 name = "egui-gizmo"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "244ad934e43c342e3357a1d5ce69401aee9b4f3b0f224ad099a276b8761454dd"
+checksum = "2cdd96a8bc62d5a7dbc03fe08db7bb44b50ac4167c2620d482530d9af6e27634"
 dependencies = [
  "egui",
  "glam",
