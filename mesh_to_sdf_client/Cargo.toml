@@ -25,7 +25,7 @@ bytemuck = { version = "1.15.0", features = ["derive"] }
 web-time = "1.1.0"
 itertools = "0.12.1"
 anyhow = "1.0.81"
-winit = "0.29.14"
+winit = "0.29.15"
 glam = { version = "0.25.0", default-features = true, features = ["bytemuck", "mint"] }
 easy-gltf = { version= "1.1.1", default-features = true, features = ["names"] }
 image = "0.24.9"
