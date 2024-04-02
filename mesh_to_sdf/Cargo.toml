@@ -9,23 +9,26 @@ authors = ["Etienne Desbois <e.desbois@hotmail.fr>"]
 homepage = "https://github.com/Azkellas/mesh_to_sdf"
 repository = "https://github.com/Azkellas/mesh_to_sdf"
 keywords = ["mesh", "sdf", "distance_field", "raymarching", "voxels"]
-categories = ["algorithms", "rendering::data-formats", "game-development", "graphics", "data-structures"]
-
-exclude = [
-    "assets/*",
-    "ARCHITECTURE.md",
+categories = [
+    "algorithms",
+    "rendering::data-formats",
+    "game-development",
+    "graphics",
+    "data-structures",
 ]
+
+exclude = ["assets/*", "ARCHITECTURE.md"]
 
 [dependencies]
 float-cmp = "0.9.0"
 itertools = "0.12.1"
 log = "0.4.21"
 ordered-float = "4.2.0"
-rayon = "1.9.0"
+rayon = "1.10.0"
 
-glam = { version = "0.25.0", optional = true }
+glam = { version = "0.27.0", optional = true }
 mint = { version = "0.5.9", optional = true }
-nalgebra = { version = "0.32.4", optional = true }
+nalgebra = { version = "0.32.5", optional = true }
 cgmath = { version = "0.18.0", optional = true }
 
 [features]
@@ -35,7 +38,7 @@ nalgebra = ["dep:nalgebra"]
 cgmath = ["dep:cgmath"]
 
 [dev-dependencies]
-easy-gltf = "1.1.1"
+easy-gltf = "1.1.2"
 criterion = { version = "0.5.1", features = ["html_reports"] }
 proptest = "1.4.0"
 env_logger = "0.11.3"

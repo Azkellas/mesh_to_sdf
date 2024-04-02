@@ -474,7 +474,7 @@ async fn run(
                     program.draw_ui(&context.device, &context.queue, ui);
                 });
 
-                egui::Area::new("Viewport")
+                egui::Area::new("Viewport".into())
                     .fixed_pos((0.0, 0.0))
                     .show(egui_context, |ui| {
                         ui.with_layer_id(egui::LayerId::background(), |ui| {
