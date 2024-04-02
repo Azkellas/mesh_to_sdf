@@ -28,7 +28,7 @@ anyhow = "1.0.81"
 winit = "0.29.15"
 glam = { version = "0.25.0", default-features = true, features = ["bytemuck", "mint"] }
 easy-gltf = { version= "1.1.1", default-features = true, features = ["names"] }
-image = "0.24.9"
+image = "0.25.1"
 pollster = "0.3.0"
 egui-wgpu = "0.26.2"
 egui-winit = "0.26.2"
