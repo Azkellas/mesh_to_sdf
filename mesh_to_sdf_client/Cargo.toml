@@ -38,7 +38,7 @@ glam = { version = "0.27.0", default-features = true, features = [
 easy-gltf = { version = "1.1.1", default-features = true, features = ["names"] }
 image = "0.25.1"
 pollster = "0.3.0"
-egui-wgpu = "0.27.1"
+egui-wgpu = "0.27.2"
 egui-winit = "0.27.1"
 log = "0.4.21"
 env_logger = "0.11.3"
