@@ -47,12 +47,12 @@ float-cmp = "0.9.0"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 # Enable shader hot reload for native compilation.
-rust-embed = "8.3.0"
+rust-embed = "8.4.0"
 notify = "6.1.1"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 # Embed shaders in wasm even in debug mode.
-rust-embed = { version = "8.2.0", features = ["debug-embed"] }
+rust-embed = { version = "8.4.0", features = ["debug-embed"] }
 wasm-bindgen-futures = "0.4.42"
 web-sys = "0.3.69"
 console_error_panic_hook = "0.1.7"
