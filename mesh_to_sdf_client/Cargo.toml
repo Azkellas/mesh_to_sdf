@@ -29,7 +29,7 @@ winit_input_helper = "0.16.0"
 bytemuck = { version = "1.16.0", features = ["derive"] }
 web-time = "1.1.0"
 itertools = "0.12.1"
-anyhow = "1.0.83"
+anyhow = "1.0.86"
 winit = "0.29.15"
 glam = { version = "0.27.0", default-features = true, features = [
     "bytemuck",
