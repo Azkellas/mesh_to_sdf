@@ -24,7 +24,7 @@ mesh_to_sdf = { path = "../mesh_to_sdf", version = "0.2.1", features = [
 ] }
 egui = "0.27.2"
 egui-gizmo = "0.16.2"
-wgpu = { version = "0.19.4", default-features = false }
+wgpu = { version = "0.20.0", default-features = false }
 winit_input_helper = "0.16.0"
 bytemuck = { version = "1.16.0", features = ["derive"] }
 web-time = "1.1.0"
