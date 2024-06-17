@@ -30,7 +30,7 @@ bytemuck = { version = "1.16.0", features = ["derive"] }
 web-time = "1.1.0"
 itertools = "0.13.0"
 anyhow = "1.0.86"
-winit = "0.29.15"
+winit = "0.30.2"
 glam = { version = "0.27.0", default-features = true, features = [
     "bytemuck",
     "mint",
