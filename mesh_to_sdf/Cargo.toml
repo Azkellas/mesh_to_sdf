@@ -40,7 +40,7 @@ cgmath = ["dep:cgmath"]
 [dev-dependencies]
 easy-gltf = "1.1.2"
 criterion = { version = "0.5.1", features = ["html_reports"] }
-proptest = "1.4.0"
+proptest = "1.5.0"
 env_logger = "0.11.3"
 
 [[bench]]
