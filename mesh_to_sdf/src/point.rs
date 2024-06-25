@@ -9,7 +9,7 @@ mod impl_cgmath;
 mod impl_glam;
 #[cfg(feature = "mint")]
 mod impl_mint;
-#[cfg(feature = "nalgebra")]
+//#[cfg(feature = "nalgebra")]
 mod impl_nalgebra;
 
 /// Point is the trait that represents a point in 3D space.

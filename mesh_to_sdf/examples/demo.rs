@@ -29,6 +29,7 @@ fn main() {
         &vertices,
         mesh_to_sdf::Topology::TriangleList(Some(indices)),
         &query_points,
+        mesh_to_sdf::AccelerationMethod::Bvh,
         mesh_to_sdf::SignMethod::Raycast,
     );
 
