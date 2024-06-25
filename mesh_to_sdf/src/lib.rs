@@ -554,7 +554,9 @@ where
                         for x in 0..=cell_count {
                             let cell = [x, y, z];
                             let cell_idx = grid.get_cell_idx(&cell);
-                            intersections[cell_idx][0] += 1;
+                            if cell_idx < intersections.len() {
+                                intersections[cell_idx][0] += 1;
+                            }
                         }
                     }
                 }
@@ -576,7 +578,9 @@ where
                         for y in 0..=cell_count {
                             let cell = [x, y, z];
                             let cell_idx = grid.get_cell_idx(&cell);
-                            intersections[cell_idx][1] += 1;
+                            if cell_idx < intersections.len() {
+                                intersections[cell_idx][1] += 1;
+                            }
                         }
                     }
                 }
@@ -598,7 +602,9 @@ where
                         for z in 0..=cell_count {
                             let cell = [x, y, z];
                             let cell_idx = grid.get_cell_idx(&cell);
-                            intersections[cell_idx][2] += 1;
+                            if cell_idx < intersections.len() {
+                                intersections[cell_idx][2] += 1;
+                            }
                         }
                     }
                 }
@@ -772,6 +778,42 @@ mod tests {
                 }
             }
         }
+    }
+
+    // Make sure the raycasts on grid do not access out of bounds cells.
+    #[test]
+    fn test_grid_raycast() {
+        let model = &easy_gltf::load("assets/ferris3d.glb").unwrap()[0].models[0];
+        let vertices = model.vertices().iter().map(|v| v.position).collect_vec();
+        let indices = model.indices().unwrap();
+
+        let bbox_min = vertices.iter().fold(
+            cgmath::Vector3::new(f32::MAX, f32::MAX, f32::MAX),
+            |acc, v| cgmath::Vector3 {
+                x: acc.x.min(v.x),
+                y: acc.y.min(v.y),
+                z: acc.z.min(v.z),
+            },
+        );
+        let mut bbox_max = vertices.iter().fold(
+            cgmath::Vector3::new(-f32::MAX, -f32::MAX, -f32::MAX),
+            |acc, v| cgmath::Vector3 {
+                x: acc.x.max(v.x),
+                y: acc.y.max(v.y),
+                z: acc.z.max(v.z),
+            },
+        );
+
+        bbox_max *= 0.5;
+
+        let grid = Grid::from_bounding_box(&bbox_min, &bbox_max, [32, 32, 32]);
+
+        generate_grid_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(&indices)),
+            &grid,
+            SignMethod::Raycast,
+        );
     }
 
     #[test]
