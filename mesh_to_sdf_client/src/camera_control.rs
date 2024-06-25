@@ -47,10 +47,10 @@ impl CameraLookAt {
                 let delta_y = mouse_delta.1 / window_size[1] * std::f32::consts::PI;
                 self.longitude += delta_x;
                 self.latitude += delta_y;
-                self.latitude = self
-                    .latitude
-                    .max(-std::f32::consts::FRAC_PI_2 + 0.001) // Avoid gimbal lock
-                    .min(std::f32::consts::FRAC_PI_2 - 0.001);
+                self.latitude = self.latitude.clamp(
+                    -std::f32::consts::FRAC_PI_2 + 0.001,
+                    std::f32::consts::FRAC_PI_2 - 0.001,
+                );
 
                 captured = true;
             }
@@ -76,7 +76,7 @@ impl CameraLookAt {
             // Zoom
             self.distance -= input.scroll_diff().1 * self.distance * 0.2;
             // Don't allow zoom to reach 0 or 1e6 to avoid getting stuck / in float precision issue realm.
-            self.distance = self.distance.max(0.05).min(1e6);
+            self.distance = self.distance.clamp(0.05, 1e6);
 
             captured = true;
         }

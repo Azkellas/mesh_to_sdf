@@ -33,7 +33,7 @@ impl ModelRenderPass {
                     model_bind_group_layout,
                     &camera.bind_group_layout,
                     shadow_bind_group_layout,
-                    &textures_bind_group_layout,
+                    textures_bind_group_layout,
                 ],
                 push_constant_ranges: &[],
             });
