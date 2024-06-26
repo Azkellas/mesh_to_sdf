@@ -13,6 +13,10 @@
 
 - Fix https://github.com/Azkellas/mesh_to_sdf/issues/25 where `generate_grid_sdf` might panic if the grid does not contain the mesh.
 
+### Removed
+
+- nalgebra is no longer optional as it is required by bvh. The feature was removed as it will always be available.
+
 
 ## [0.2.1] - 2024-02-18
 
