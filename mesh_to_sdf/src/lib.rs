@@ -348,7 +348,7 @@ where
     query_points
         .par_iter()
         .map(|point| {
-            let bvh_indices = bvh.traverse_distance(point);
+            let bvh_indices = bvh.nearest_candidates(point);
 
             let mut min_dist = f32::MAX;
             if sign_method == SignMethod::Normal {
@@ -1077,6 +1077,8 @@ mod tests {
             cgmath::Vector3::new(0.01, 0.01, 0.5),
             cgmath::Vector3::new(1.0, 1.0, 1.0),
             cgmath::Vector3::new(0.1, 0.2, 0.2),
+            cgmath::Vector3::new(1.1, 2.2, 5.2),
+            cgmath::Vector3::new(-0.1, 0.2, -0.2),
         ];
 
         let bvh_sdf = generate_sdf(
@@ -1095,8 +1097,14 @@ mod tests {
             SignMethod::Raycast,
         );
 
-        for (bvh, sdf) in bvh_sdf.iter().zip(sdf.iter()) {
-            assert!((bvh - sdf).abs() < 0.1, "{} !+ {}", bvh, sdf);
+        for (idx, (bvh, sdf)) in bvh_sdf.iter().zip(sdf.iter()).enumerate() {
+            assert!(
+                (bvh - sdf).abs() < 0.1,
+                "{:?}: {} != {}",
+                query_points[idx],
+                bvh,
+                sdf
+            );
         }
     }
 }
