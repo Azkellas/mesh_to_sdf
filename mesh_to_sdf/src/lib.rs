@@ -1179,4 +1179,62 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_generate_bvh_normal() {
+        let model = &easy_gltf::load("assets/suzanne.glb").unwrap()[0].models[0];
+        let vertices = model.vertices().iter().map(|v| v.position).collect_vec();
+        let indices = model.indices().unwrap();
+
+        let bbox_min = vertices.iter().fold(
+            cgmath::Vector3::new(f32::MAX, f32::MAX, f32::MAX),
+            |acc, v| cgmath::Vector3 {
+                x: acc.x.min(v.x),
+                y: acc.y.min(v.y),
+                z: acc.z.min(v.z),
+            },
+        );
+        let bbox_max = vertices.iter().fold(
+            cgmath::Vector3::new(-f32::MAX, -f32::MAX, -f32::MAX),
+            |acc, v| cgmath::Vector3 {
+                x: acc.x.max(v.x),
+                y: acc.y.max(v.y),
+                z: acc.z.max(v.z),
+            },
+        );
+
+        let grid = Grid::from_bounding_box(&bbox_min, &bbox_max, [16, 16, 16]);
+        let mut query_points = Vec::new();
+        for x in 0..grid.get_cell_count()[0] {
+            for y in 0..grid.get_cell_count()[1] {
+                for z in 0..grid.get_cell_count()[2] {
+                    query_points.push(grid.get_cell_center(&[x, y, z]));
+                }
+            }
+        }
+        let sdf = generate_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &query_points,
+            AccelerationMethod::Bvh,
+            SignMethod::Normal,
+        );
+        let grid_sdf = generate_grid_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &grid,
+            SignMethod::Normal,
+        );
+
+        // Test against generate_sdf
+        for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
+            assert!(
+                (sdf - grid_sdf).abs() < 0.01,
+                "i: {}: {} {}",
+                i,
+                sdf,
+                grid_sdf
+            );
+        }
+    }
 }
