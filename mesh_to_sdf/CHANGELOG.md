@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- `generate_sdf` takes an additional `AccelerationMethod` parameter, that can be either `AccelerationMethod::Bvh` (default) or `AccelerationMethod::None`.
+    `Bvh` is recommended unless you're really tight on memory or your query is very small (couple hundreds of queries and triangles).
+    For example, a query of 15k points with 100k triangles is 10 times faster with a bvh, and twice faster for 500 queries and 10k triangles.
+    `Bvh` is also optimised for the `SignMethod::Raycast` sign method. https://github.com/Azkellas/mesh_to_sdf/pull/75
+
+### Fixed
+
+- Fix https://github.com/Azkellas/mesh_to_sdf/issues/25 where `generate_grid_sdf` might panic if the grid does not contain the mesh.
+
+
 ## [0.2.1] - 2024-02-18
 
 ### Changed
