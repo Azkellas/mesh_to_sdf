@@ -87,8 +87,8 @@ impl<V: Point> BvhDistance<V> for Bvh<f32, 3> {
 
         indices
             .into_iter()
-            .filter(|(_, node_min, _)| *node_min <= best_max_distance)
-            .map(|(i, _, _)| i)
+            .filter(|(_, node_min)| *node_min <= best_max_distance)
+            .map(|(i, _)| i)
             .collect()
     }
 }
@@ -100,7 +100,7 @@ pub trait BvhTraverseDistance<V: Point> {
         nodes: &[Self],
         node_index: usize,
         origin: &V,
-        indices: &mut Vec<(usize, f32, f32)>,
+        indices: &mut Vec<(usize, f32)>,
         best_min_distance: &mut f32,
         best_max_distance: &mut f32,
     ) where
@@ -115,7 +115,7 @@ impl<V: Point> BvhTraverseDistance<V> for BvhNode<f32, 3> {
         nodes: &[Self],
         node_index: usize,
         origin: &V,
-        indices: &mut Vec<(usize, f32, f32)>,
+        indices: &mut Vec<(usize, f32)>,
         best_min_distance: &mut f32,
         best_max_distance: &mut f32,
     ) {
@@ -164,7 +164,7 @@ impl<V: Point> BvhTraverseDistance<V> for BvhNode<f32, 3> {
             } => {
                 // Try to compute bounding box via parent node to update best_min/max_distances
                 let parent_node = &nodes[parent_index];
-                let (min_dist, max_dist) = if let BvhNode::Node {
+                let min_dist = if let BvhNode::Node {
                     ref child_l_aabb,
                     child_l_index,
                     ref child_r_aabb,
@@ -188,14 +188,14 @@ impl<V: Point> BvhTraverseDistance<V> for BvhNode<f32, 3> {
                     *best_min_distance = best_min_distance.min(min_dist);
                     *best_max_distance = best_max_distance.min(max_dist);
 
-                    (min_dist, max_dist)
+                    min_dist
                 } else {
                     // The parent is a leaf if the tree is a single node (ie there is only one shape in the tree).
-                    (*best_min_distance, *best_max_distance)
+                    *best_min_distance
                 };
 
                 // we reached a leaf, we add it to the list of indices since it is a potential candidate
-                indices.push((shape_index, min_dist, max_dist));
+                indices.push((shape_index, min_dist));
             }
         }
     }
