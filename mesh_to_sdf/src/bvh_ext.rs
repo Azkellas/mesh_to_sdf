@@ -92,6 +92,7 @@ impl<V: Point> BvhDistance<V> for Bvh<f32, 3> {
             .collect()
     }
 }
+
 pub trait BvhTraverseDistance<V: Point> {
     /// Traverses the [`Bvh`] recursively and returns all shapes whose [`Aabb`] countains
     /// a candidate shape for being the nearest to the given point.

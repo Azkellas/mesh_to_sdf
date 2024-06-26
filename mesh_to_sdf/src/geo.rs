@@ -138,6 +138,7 @@ fn closest_point_segment<V: Point>(p: &V, a: &V, b: &V) -> V {
 
 /// Grid alignment for raycast.
 /// Used exclusively in `ray_triangle_intersection_aligned`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum GridAlign {
     X,
     Y,

@@ -375,27 +375,41 @@ where
                     min_dist = min_dist.min(distance);
                 }
 
-                let ray = bvh::ray::Ray::new(
-                    nalgebra::Point3::new(point.x(), point.y(), point.z()),
-                    nalgebra::Vector3::new(1.0, 0.0, 0.0),
-                );
-                let mut intersection_count = 0;
-                let hitcast = bvh.traverse(&ray, &bvh_nodes);
-                for bvh_node in hitcast {
-                    let a = &vertices[bvh_node.vertex_indices.0];
-                    let b = &vertices[bvh_node.vertex_indices.1];
-                    let c = &vertices[bvh_node.vertex_indices.2];
-                    let intersect =
-                        geo::ray_triangle_intersection_aligned(point, [a, b, c], geo::GridAlign::X);
-                    if intersect.is_some() {
-                        intersection_count += 1;
+                let alignments = [
+                    (geo::GridAlign::X, nalgebra::Vector3::new(1.0, 0.0, 0.0)),
+                    (geo::GridAlign::Y, nalgebra::Vector3::new(0.0, 1.0, 0.0)),
+                    (geo::GridAlign::Z, nalgebra::Vector3::new(0.0, 0.0, 1.0)),
+                ];
+
+                let mut insides = 0;
+                for (alignment, direction) in alignments {
+                    let ray = bvh::ray::Ray::new(
+                        nalgebra::Point3::new(point.x(), point.y(), point.z()),
+                        direction,
+                    );
+                    let mut intersection_count = 0;
+                    let hitcast = bvh.traverse(&ray, &bvh_nodes);
+                    for bvh_node in hitcast {
+                        let a = &vertices[bvh_node.vertex_indices.0];
+                        let b = &vertices[bvh_node.vertex_indices.1];
+                        let c = &vertices[bvh_node.vertex_indices.2];
+                        let intersect =
+                            geo::ray_triangle_intersection_aligned(point, [a, b, c], alignment);
+                        if intersect.is_some() {
+                            intersection_count += 1;
+                        }
+                    }
+
+                    if intersection_count % 2 == 1 {
+                        insides += 1;
                     }
                 }
 
-                if intersection_count % 2 == 0 {
-                    min_dist
-                } else {
+                // Return inside if at least two are insides.
+                if insides > 1 {
                     -min_dist
+                } else {
+                    min_dist
                 }
             }
         })
@@ -1099,11 +1113,69 @@ mod tests {
 
         for (idx, (bvh, sdf)) in bvh_sdf.iter().zip(sdf.iter()).enumerate() {
             assert!(
-                (bvh - sdf).abs() < 0.1,
+                (bvh - sdf).abs() < 0.01,
                 "{:?}: {} != {}",
                 query_points[idx],
                 bvh,
                 sdf
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_bvh_big() {
+        let model = &easy_gltf::load("assets/suzanne.glb").unwrap()[0].models[0];
+        let vertices = model.vertices().iter().map(|v| v.position).collect_vec();
+        let indices = model.indices().unwrap();
+
+        let bbox_min = vertices.iter().fold(
+            cgmath::Vector3::new(f32::MAX, f32::MAX, f32::MAX),
+            |acc, v| cgmath::Vector3 {
+                x: acc.x.min(v.x),
+                y: acc.y.min(v.y),
+                z: acc.z.min(v.z),
+            },
+        );
+        let bbox_max = vertices.iter().fold(
+            cgmath::Vector3::new(-f32::MAX, -f32::MAX, -f32::MAX),
+            |acc, v| cgmath::Vector3 {
+                x: acc.x.max(v.x),
+                y: acc.y.max(v.y),
+                z: acc.z.max(v.z),
+            },
+        );
+
+        let grid = Grid::from_bounding_box(&bbox_min, &bbox_max, [32, 32, 32]);
+        let mut query_points = Vec::new();
+        for x in 0..grid.get_cell_count()[0] {
+            for y in 0..grid.get_cell_count()[1] {
+                for z in 0..grid.get_cell_count()[2] {
+                    query_points.push(grid.get_cell_center(&[x, y, z]));
+                }
+            }
+        }
+        let sdf = generate_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &query_points,
+            AccelerationMethod::Bvh,
+            SignMethod::Raycast,
+        );
+        let grid_sdf = generate_grid_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &grid,
+            SignMethod::Raycast,
+        );
+
+        // Test against generate_sdf
+        for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
+            assert!(
+                (sdf - grid_sdf).abs() < 0.01,
+                "i: {}: {} {}",
+                i,
+                sdf,
+                grid_sdf
             );
         }
     }
