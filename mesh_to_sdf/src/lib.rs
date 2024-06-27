@@ -348,7 +348,7 @@ where
     query_points
         .par_iter()
         .map(|point| {
-            let bvh_indices = bvh.nearest_candidates(point);
+            let bvh_indices = bvh.nearest_candidates(point, &bvh_nodes);
 
             let mut min_dist = f32::MAX;
             if sign_method == SignMethod::Normal {
