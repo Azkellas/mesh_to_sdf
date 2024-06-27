@@ -1,4 +1,4 @@
-use bvh::aabb::Aabb;
+use bvh::aabb::{Aabb, Bounded};
 use bvh::bvh::{Bvh, BvhNode};
 use nalgebra::SimdPartialOrd;
 
@@ -59,20 +59,20 @@ impl AabbExt for Aabb<f32, 3> {
     }
 }
 
-pub trait BvhDistance<V: Point> {
+pub trait BvhDistance<V: Point, Shape: Bounded<f32, 3>> {
     /// Traverses the [`Bvh`].
     /// Returns a subset of `shapes` which are candidates for being the closest to `point`.
     ///
-    fn nearest_candidates(&self, origin: &V) -> Vec<usize>
+    fn nearest_candidates(&self, origin: &V, shapes: &[Shape]) -> Vec<usize>
     where
         Self: std::marker::Sized;
 }
 
-impl<V: Point> BvhDistance<V> for Bvh<f32, 3> {
+impl<V: Point, Shape: Bounded<f32, 3>> BvhDistance<V, Shape> for Bvh<f32, 3> {
     /// Traverses the [`Bvh`].
     /// Returns a subset of `shapes` which are candidates for being the closest to `point`.
     ///
-    fn nearest_candidates(&self, origin: &V) -> Vec<usize> {
+    fn nearest_candidates(&self, origin: &V, shapes: &[Shape]) -> Vec<usize> {
         let mut indices = Vec::new();
         let mut best_min_distance = f32::MAX;
         let mut best_max_distance = f32::MAX;
@@ -80,6 +80,7 @@ impl<V: Point> BvhDistance<V> for Bvh<f32, 3> {
             &self.nodes,
             0,
             origin,
+            shapes,
             &mut indices,
             &mut best_min_distance,
             &mut best_max_distance,
@@ -93,7 +94,7 @@ impl<V: Point> BvhDistance<V> for Bvh<f32, 3> {
     }
 }
 
-pub trait BvhTraverseDistance<V: Point> {
+pub trait BvhTraverseDistance<V: Point, Shape: Bounded<f32, 3>> {
     /// Traverses the [`Bvh`] recursively and returns all shapes whose [`Aabb`] countains
     /// a candidate shape for being the nearest to the given point.
     ///
@@ -101,6 +102,7 @@ pub trait BvhTraverseDistance<V: Point> {
         nodes: &[Self],
         node_index: usize,
         origin: &V,
+        shapes: &[Shape],
         indices: &mut Vec<(usize, f32)>,
         best_min_distance: &mut f32,
         best_max_distance: &mut f32,
@@ -108,7 +110,7 @@ pub trait BvhTraverseDistance<V: Point> {
         Self: std::marker::Sized;
 }
 
-impl<V: Point> BvhTraverseDistance<V> for BvhNode<f32, 3> {
+impl<V: Point, Shape: Bounded<f32, 3>> BvhTraverseDistance<V, Shape> for BvhNode<f32, 3> {
     /// Traverses the [`Bvh`] recursively and returns all shapes whose [`Aabb`] countains
     /// a candidate shape for being the nearest to the given point.
     ///
@@ -116,6 +118,7 @@ impl<V: Point> BvhTraverseDistance<V> for BvhNode<f32, 3> {
         nodes: &[Self],
         node_index: usize,
         origin: &V,
+        shapes: &[Shape],
         indices: &mut Vec<(usize, f32)>,
         best_min_distance: &mut f32,
         best_max_distance: &mut f32,
@@ -152,6 +155,7 @@ impl<V: Point> BvhTraverseDistance<V> for BvhNode<f32, 3> {
                             nodes,
                             index,
                             origin,
+                            shapes,
                             indices,
                             best_min_distance,
                             best_max_distance,
@@ -159,41 +163,18 @@ impl<V: Point> BvhTraverseDistance<V> for BvhNode<f32, 3> {
                     }
                 }
             }
-            BvhNode::Leaf {
-                shape_index,
-                parent_index,
-            } => {
-                // Try to compute bounding box via parent node to update best_min/max_distances
-                let parent_node = &nodes[parent_index];
-                let min_dist = if let BvhNode::Node {
-                    ref child_l_aabb,
-                    child_l_index,
-                    ref child_r_aabb,
-                    ..
-                } = parent_node
-                {
-                    // We found a parent node, we can compute the min/max distances for the leaf shape.
-                    let aabb = if *child_l_index == node_index {
-                        child_l_aabb
-                    } else {
-                        child_r_aabb
-                    };
-                    let (min_dist, max_dist) = aabb.get_min_max_distances(origin);
+            BvhNode::Leaf { shape_index, .. } => {
+                let aabb = shapes[shape_index].aabb();
+                let (min_dist, max_dist) = aabb.get_min_max_distances(origin);
 
-                    if !indices.is_empty() && max_dist < *best_min_distance {
-                        // Node is better by a margin
-                        indices.clear();
-                    }
+                if !indices.is_empty() && max_dist < *best_min_distance {
+                    // Node is better by a margin
+                    indices.clear();
+                }
 
-                    // Also update min_dist here since we have a credible (small) bounding box.
-                    *best_min_distance = best_min_distance.min(min_dist);
-                    *best_max_distance = best_max_distance.min(max_dist);
-
-                    min_dist
-                } else {
-                    // The parent is a leaf if the tree is a single node (ie there is only one shape in the tree).
-                    *best_min_distance
-                };
+                // Also update min_dist here since we have a credible (small) bounding box.
+                *best_min_distance = best_min_distance.min(min_dist);
+                *best_max_distance = best_max_distance.min(max_dist);
 
                 // we reached a leaf, we add it to the list of indices since it is a potential candidate
                 indices.push((shape_index, min_dist));
