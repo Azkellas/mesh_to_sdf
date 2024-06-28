@@ -374,6 +374,7 @@ where
     //        - compute the distance to the triangle
     //        - if the distance is smaller than the current distance in the grid, update the grid
     //          and add the cell to the heap.
+    //          To avoid having multiple triangles for a cell in the resulting heap, we use a pre-heap grid first.
     //
     // - while the heap is not empty:
     //    - pop the cell with the smallest distance (wrt sign)
@@ -382,10 +383,12 @@ where
     //        - if the distance is smaller than the current distance in the grid, update the grid
     //          and add the cell to the heap.
     //
+    // - if we're in Raycast mode, we compute the intersections with the triangles to determine the sign.
+    //
     // - return the grid.
     let mut distances = vec![f32::MAX; grid.get_total_cell_count()];
 
-    let mut heap = std::collections::BinaryHeap::new();
+    let mut preheap = vec![((0, 0, 0), f32::MAX); grid.get_total_cell_count()];
 
     // debug step counter.
     let mut steps = 0;
@@ -440,18 +443,27 @@ where
                 // New smallest ditance: update the grid and add the cell to the heap.
                 steps += 1;
 
+                preheap[cell_idx] = (triangle, distance);
                 distances[cell_idx] = distance;
-                let state = State {
-                    distance: NotNan::new(distance).unwrap(), // TODO: handle error
-                    triangle,
-                    cell,
-                };
-                heap.push(state);
             }
         }
     });
     // First step is done: we have the closest triangle for each cell.
     // And a bit more since a triangle might erase the distance of another triangle later in the process.
+
+    let mut heap = preheap
+        .into_iter()
+        .enumerate()
+        .filter(|(_, (_, d))| *d < f32::MAX)
+        .map(|(cell_idx, (triangle, distance))| {
+            let cell = grid.get_cell_integer_coordinates(cell_idx);
+            State {
+                distance: NotNan::new(distance).unwrap(), // distance is valid.
+                triangle,
+                cell,
+            }
+        })
+        .collect::<std::collections::BinaryHeap<_>>();
 
     log::info!("[generate_grid_sdf] init steps: {}", steps);
     steps = 0;
