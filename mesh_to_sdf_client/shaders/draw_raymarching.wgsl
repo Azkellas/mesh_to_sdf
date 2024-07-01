@@ -278,12 +278,12 @@ fn unproject(pixel: vec2<f32>) -> vec3<f32> {
 }
 
 fn intersectAABB(rayOrigin: vec3<f32>, rayDir: vec3<f32>, boxMin: vec3<f32>, boxMax: vec3<f32>) -> vec2<f32> {
-    let tMin: vec3<f32> = (boxMin - rayOrigin) / rayDir;
-    let tMax: vec3<f32> = (boxMax - rayOrigin) / rayDir;
-    let t1: vec3<f32> = min(tMin, tMax);
-    let t2: vec3<f32> = max(tMin, tMax);
-    let tNear: f32 = max(max(t1.x, t1.y), t1.z);
-    let tFar: f32 = min(min(t2.x, t2.y), t2.z);
+    let tMin = (boxMin - rayOrigin) / rayDir;
+    let tMax = (boxMax - rayOrigin) / rayDir;
+    let t1 = min(tMin, tMax);
+    let t2 = max(tMin, tMax);
+    let tNear = max(max(t1.x, t1.y), t1.z);
+    let tFar = min(min(t2.x, t2.y), t2.z);
     return vec2<f32>(tNear, tFar);
 } 
 
@@ -293,14 +293,19 @@ fn get_grid_epsilon() -> f32 {
 
 // entry point of the 3d raymarching.
 fn sdf_3d(eye: vec3<f32>, ray: vec3<f32>) -> vec4<f32> {
-
-    let box_hit = intersectAABB(eye, ray, uniforms.start.xyz, uniforms.end.xyz);
-    if box_hit.x > box_hit.y {
-        // outside the box
-        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    }
     let epsilon = get_grid_epsilon();
-    var position = eye + (box_hit.x + epsilon) * ray;
+    var position = eye;
+
+    if eye.x < uniforms.start.x || eye.y < uniforms.start.y || eye.z < uniforms.start.z || eye.x > uniforms.end.x || eye.y > uniforms.end.y || eye.z > uniforms.end.z {
+        let box_hit = intersectAABB(eye, ray, uniforms.start.xyz, uniforms.end.xyz);
+        if box_hit.x > box_hit.y {
+            // outside the box
+            return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        }
+    
+        position = eye + (box_hit.x + epsilon) * ray;
+    }
+
 
 
     // actual ray marching.
@@ -407,25 +412,64 @@ fn get_albedo(p: vec3<f32>) -> vec4<f32> {
     var fars = array(bbox_size.x, bbox_size.x, bbox_size.z, bbox_size.z, bbox_size.y, bbox_size.y);
     var dists = array(pmin.x, pmax.x, pmin.z, pmax.z, pmin.y, pmax.y);
 
-    var min_dist = 1e10;
-    var uvlayer = vec3(0.0, 0.0, 0.0);
+    let normal = estimate_normal(p);
 
-    for (var i = 0u; i < 6; i = i + 1) {
-        var projected = cubemap_viewprojs[i] * vec4(p, 1.0);
-        projected /= projected.w;
-        var uv = projected.xy * 0.5 + 0.5;
-        uv.y = 1.0 - uv.y;
-        let depth = textureSample(cubemap_depth, cubemap_depth_sampler, uv, i).x;
-        let depth_lin = (1.0 - depth) * fars[i];
-        let delta = abs(depth_lin - projected.z);
-        let cmp = delta;
-        if cmp < min_dist {
-            min_dist = cmp;
-            uvlayer = vec3(uv, f32(i));
+    let epsilon = get_grid_epsilon();
+    var layer = -1;
+    let offset = epsilon * 10.0;
+
+    var directions = array(
+        vec3(-1.0, 0.0, 0.0),
+        vec3(1.0, 0.0, 0.0),
+        vec3(0.0, 0.0, 1.0),
+        vec3(0.0, 0.0, -1.0),
+        vec3(0.0, -1.0, 0.0),
+        vec3(0.0, 1.0, 0.0),
+    );
+    var best_dot = 0.0;
+
+    // SDF to check visibility.
+    for (var i = 0i; i < 6; i = i + 1) {
+        let dir = directions[i];
+        let dist = sdf_3d(p + offset * dir, dir).w;
+        // we check if > epsilon to see if the ray managed to escape the object.
+        // when that's the case we keep the best dot product to make it as parallel to the camera look direction as possible.
+        // this way we can avoid stretching the cubemap too much.
+        // TODO: interpolation between the valid cubemaps.
+        if dist > epsilon && dot(dir, normal) > best_dot {
+            best_dot = dot(dir, normal);
+            layer = i;
         }
     }
 
-    let color = textureSample(cubemap, cubemap_sampler, uvlayer.xy, u32(uvlayer.z));
+
+    if layer < 0 {
+        // If the raymarch gave no result, we find the least worst projection via the cubemap depthmaps.
+        // This avoids not being able to render mesh interiors but gives a less accurate result.
+        var min_dist = 1e10;
+        for (var i = 0; i < 6; i = i + 1) {
+            var projected = cubemap_viewprojs[i] * vec4(p, 1.0);
+            projected /= projected.w;
+            var uv = projected.xy * 0.5 + 0.5;
+            uv.y = 1.0 - uv.y;
+            let depth = textureSample(cubemap_depth, cubemap_depth_sampler, uv, i).x;
+            let depth_lin = (1.0 - depth) * fars[i];
+            let delta = abs(depth_lin - projected.z);
+            if delta < min_dist {
+                layer = i;
+                min_dist = delta;
+            }
+        }
+    }
+
+    var color = vec4(1.0, 0.0, 1.0, 1.0);
+    if layer >= 0 {
+        var projected = cubemap_viewprojs[layer] * vec4(p, 1.0);
+        projected /= projected.w;
+        var uv = projected.xy * 0.5 + 0.5;
+        uv.y = 1.0 - uv.y;
+        color = textureSample(cubemap, cubemap_sampler, uv, layer);
+    }
 
     return color;
 }
