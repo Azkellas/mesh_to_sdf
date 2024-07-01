@@ -68,7 +68,7 @@ impl ShadowMap {
             light: camera_data,
             texture: Texture::create_depth_texture(
                 device,
-                &Extent3d {
+                Extent3d {
                     width: 1024,
                     height: 1024,
                     depth_or_array_layers: 1,

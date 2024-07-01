@@ -277,7 +277,7 @@ impl SdfProgram {
             ui.label("Bounding box max");
             ui.label(format!(
                 "x: {:.2} y: {:.2} z: {:.2}",
-                model_info.bounding_box[3], model_info.bounding_box[4], model_info.bounding_box[4]
+                model_info.bounding_box[3], model_info.bounding_box[4], model_info.bounding_box[5]
             ));
             ui.end_row();
         }
@@ -557,17 +557,17 @@ impl SdfProgram {
 
         {
             ui.label("Bounding Box Extent");
-            let mut new_value = self.parameters.bounding_box_extent;
+            let mut new_value = self.settings.settings.bounding_box_extent;
             ui.add(egui::Slider::new(&mut new_value, 1.0..=3.0));
 
-            if new_value != self.parameters.bounding_box_extent {
+            if new_value != self.settings.settings.bounding_box_extent {
                 // Save old state.
                 let old_state = command_stack::State {
                     parameters: self.parameters.clone(),
                     settings: self.settings.settings,
                 };
 
-                self.parameters.bounding_box_extent = new_value;
+                self.settings.settings.bounding_box_extent = new_value;
 
                 // Get new state.
                 let new_state = command_stack::State {

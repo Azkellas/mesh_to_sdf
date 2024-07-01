@@ -34,6 +34,9 @@ struct VisUniforms {
     surface_width: f32,
     point_size: f32,
     raymarch_mode: u32,
+    bounding_box_extension: f32,
+    mesh_bounding_box_min: vec4<f32>,
+    mesh_bounding_box_max: vec4<f32>,
 };
 
 const MODE_SNAP: u32 = 0u;
@@ -47,6 +50,20 @@ const MODE_SNAP_STYLIZED: u32 = 3u;
 @group(3) @binding(1) var shadow_map: texture_2d<f32>;
 @group(3) @binding(2) var shadow_sampler: sampler;
 
+@group(4) @binding(0) var cubemap: texture_2d_array<f32>;
+@group(4) @binding(1) var cubemap_sampler: sampler;
+@group(4) @binding(2) var cubemap_depth: texture_2d_array<f32>;
+@group(4) @binding(3) var cubemap_depth_sampler: sampler;
+@group(4) @binding(4) var<uniform> cubemap_viewprojs: array<mat4x4<f32>, 6>;
+
+// struct CubemapUniforms {
+//     left: amat4x4<f32>,
+//     right: mat4x4<f32>,
+//     front: mat4x4<f32>,
+//     rear: mat4x4<f32>,
+//     bottom: mat4x4<f32>,
+//     top: mat4x4<f32>,
+// }
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -270,19 +287,19 @@ fn intersectAABB(rayOrigin: vec3<f32>, rayDir: vec3<f32>, boxMin: vec3<f32>, box
     return vec2<f32>(tNear, tFar);
 } 
 
+fn get_grid_epsilon() -> f32 {
+    return EPSILON * max(uniforms.cell_size.x, max(uniforms.cell_size.y, uniforms.cell_size.z));
+}
 
 // entry point of the 3d raymarching.
-fn sdf_3d(p: vec2<f32>) -> vec4<f32> {
-
-    let eye = camera.eye.xyz;
-    let ray = unproject(p);
+fn sdf_3d(eye: vec3<f32>, ray: vec3<f32>) -> vec4<f32> {
 
     let box_hit = intersectAABB(eye, ray, uniforms.start.xyz, uniforms.end.xyz);
     if box_hit.x > box_hit.y {
         // outside the box
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
-    let epsilon = EPSILON * max(uniforms.cell_size.x, max(uniforms.cell_size.y, uniforms.cell_size.z));
+    let epsilon = get_grid_epsilon();
     var position = eye + (box_hit.x + epsilon) * ray;
 
 
@@ -297,8 +314,22 @@ fn sdf_3d(p: vec2<f32>) -> vec4<f32> {
         position += ray * dist;
     }
 
+    return vec4(position, dist);
+}
+
+fn sdf_scene(p: vec2<f32>) -> vec4<f32> {
+    let eye = camera.eye.xyz;
+    let ray = unproject(p);
+
+    let result = sdf_3d(eye, ray);
+    let position = result.xyz;
+    let dist = result.w;
+
+
     var color = vec3(0.0, 0.0, 0.0);
-    if dist < epsilon {
+    if dist < get_grid_epsilon() {
+        let eye = camera.eye.xyz;
+
         if vis_uniforms.raymarch_mode == MODE_SNAP_STYLIZED {
             // Stylized shading
             // It's due to the degenerated normals in the snap grid.
@@ -307,20 +338,50 @@ fn sdf_3d(p: vec2<f32>) -> vec4<f32> {
         } else {
             // add lighting only if we hit something.
             // color = phong_lighting(0.8, 0.5, 50.0, position, eye, shadow_camera.eye.xyz, color);
-            color = vec3(0.4, 0.4, 0.4);
+            color = get_albedo(position).rgb;
+
 
             let light = shadow_camera.eye.xyz;
             let light_dir = normalize(light - position);
             let ambiant = 0.2;
             let normal = estimate_normal(position);
             let diffuse = max(0.0, dot(normal, light_dir));
-            var diffuse_strength = 0.5;
+            // var diffuse_strength = 0.5;
+
+            var shadow_uv = shadow_camera.view_proj * vec4<f32>(position.xyz, 1.0);
+            shadow_uv /= shadow_uv.w;
+            shadow_uv.x = shadow_uv.x * 0.5 + 0.5;
+            shadow_uv.y = shadow_uv.y * -0.5 + 0.5;
+            var depth = shadow_uv.z;
+
+            let threshold = depth * 1.05;
+
+            var diffuse_strength = 1.0;
+
+            let PCF: bool = true;
+
+            if PCF {
+                var light_depth = 0.0;
+                let inv_res = vec2<f32>(1.0 / f32(camera.resolution.x), 1.0 / f32(camera.resolution.y));
+                for (var y = -1.; y <= 1.; y += 1.0) {
+                    for (var x = -1.; x <= 1.; x += 1.0) {
+                        let pdepth = textureSample(shadow_map, shadow_sampler, shadow_uv.xy + vec2(x, y) * inv_res).x;
+                        light_depth += f32(pdepth < threshold);
+                    }
+                }
+                light_depth /= 9.0;
+
+                diffuse_strength *= light_depth;
+            } else {
+                let pdepth = textureSample(shadow_map, shadow_sampler, shadow_uv.xy).x;
+                diffuse_strength *= f32(pdepth < threshold);
+            }
 
             let view_dir = normalize(camera.eye.xyz - position);
             let half_dir = normalize(view_dir + light_dir);
             let specular = max(0.0, dot(normal, half_dir));
 
-            let brightness = ambiant + (diffuse + specular) * diffuse_strength;
+            let brightness = ambiant + (diffuse + specular) * 1.0;
 
             // arbitrary attenuation
             color.r *= exp(-1.8 * (1.0 - brightness));
@@ -332,10 +393,141 @@ fn sdf_3d(p: vec2<f32>) -> vec4<f32> {
     return vec4<f32>(color, 1.0);
 }
 
+fn get_albedo(p: vec3<f32>) -> vec4<f32> {
+    let bbox_center = (vis_uniforms.mesh_bounding_box_min.xyz + vis_uniforms.mesh_bounding_box_max.xyz) * 0.5;
+    let bbox_size = vis_uniforms.mesh_bounding_box_max.xyz - vis_uniforms.mesh_bounding_box_min.xyz;
+    let bbox_min = bbox_center - bbox_size * 0.5;
+    let bbox_max = bbox_center + bbox_size * 0.5;
+
+    let pmin = p - bbox_min;
+    let pmax = bbox_max - p;
+    let mini = min(pmin, pmax);
+    let min = min(mini.x, min(mini.y, mini.z));
+
+    var fars = array(bbox_size.x, bbox_size.x, bbox_size.z, bbox_size.z, bbox_size.y, bbox_size.y);
+    var dists = array(pmin.x, pmax.x, pmin.z, pmax.z, pmin.y, pmax.y);
+
+    var min_dist = 1e10;
+    var uvlayer = vec3(0.0, 0.0, 0.0);
+
+    for (var i = 0u; i < 6; i = i + 1) {
+        var projected = cubemap_viewprojs[i] * vec4(p, 1.0);
+        projected /= projected.w;
+        var uv = projected.xy * 0.5 + 0.5;
+        uv.y = 1.0 - uv.y;
+        let depth = textureSample(cubemap_depth, cubemap_depth_sampler, uv, i).x;
+        let depth_lin = (1.0 - depth) * fars[i];
+        let delta = abs(depth_lin - projected.z);
+        let cmp = delta;
+        if cmp < min_dist {
+            min_dist = cmp;
+            uvlayer = vec3(uv, f32(i));
+        }
+    }
+
+    let color = textureSample(cubemap, cubemap_sampler, uvlayer.xy, u32(uvlayer.z));
+
+    return color;
+}
+
+fn draw_lumen_cards(p: vec2<f32>) -> vec4<f32> {
+    let eye = camera.eye.xyz;
+    let ray = unproject(p);
+
+    let bbox_center = (vis_uniforms.mesh_bounding_box_min.xyz + vis_uniforms.mesh_bounding_box_max.xyz) * 0.5;
+    let bbox_size = vis_uniforms.mesh_bounding_box_max.xyz - vis_uniforms.mesh_bounding_box_min.xyz;
+    let bbox_min = bbox_center - bbox_size * 0.5;
+    let bbox_max = bbox_center + bbox_size * 0.5;
+
+    var dist = 1e10;
+    var color = vec4(0.0, 0.0, 0.0, 1.0);
+
+    // left plane
+    if ray.x != 0.0 {
+        let off = bbox_min.x;
+        let t = (off - eye.x) / ray.x;
+        let zy = eye.zy + t * ray.zy;
+        var uv = (zy - bbox_min.zy) / (bbox_max.zy - bbox_min.zy);
+        uv.y = 1.0 - uv.y;
+        if t < dist && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 {
+            dist = t;
+            color = textureSample(cubemap, cubemap_sampler, uv, 0);
+        }
+    }
+    // right plane
+    if ray.x != 0.0 {
+        let off = bbox_max.x;
+        let t = (off - eye.x) / ray.x;
+        let zy = eye.zy + t * ray.zy;
+        var uv = (zy - bbox_min.zy) / (bbox_max.zy - bbox_min.zy);
+        uv.x = 1.0 - uv.x;
+        uv.y = 1.0 - uv.y;
+        if t < dist && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 {
+            dist = t;
+            color = textureSample(cubemap, cubemap_sampler, uv, 1);
+        }
+    }
+    // front plane
+    if ray.z != 0.0 {
+        let off = bbox_min.z;
+        let t = (off - eye.z) / ray.z;
+        let xy = eye.xy + t * ray.xy;
+        var uv = (xy - bbox_min.xy) / (bbox_max.xy - bbox_min.xy);
+        uv.x = 1.0 - uv.x;
+        uv.y = 1.0 - uv.y;
+        if t < dist && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 {
+            dist = t;
+            color = textureSample(cubemap, cubemap_sampler, uv, 3);
+        }
+    }
+    // rear plane
+    if ray.z != 0.0 {
+        let off = bbox_max.z;
+        let t = (off - eye.z) / ray.z;
+        let xy = eye.xy + t * ray.xy;
+        var uv = (xy - bbox_min.xy) / (bbox_max.xy - bbox_min.xy);
+        uv.y = 1.0 - uv.y;
+        if t < dist && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 {
+            dist = t;
+            color = textureSample(cubemap, cubemap_sampler, uv, 2);
+        }
+    }
+    // bottom plane
+    if ray.y != 0.0 {
+        let off = bbox_min.y;
+        let t = (off - eye.y) / ray.y;
+        let xz = eye.xz + t * ray.xz;
+        var uv = (xz - bbox_min.xz) / (bbox_max.xz - bbox_min.xz);
+        uv.y = 1.0 - uv.y;
+        if t < dist && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 {
+            dist = t;
+            color = textureSample(cubemap, cubemap_sampler, uv, 4);
+        }
+    }
+    // top plane
+    if ray.y != 0.0 {
+        let off = bbox_max.y;
+        let t = (off - eye.y) / ray.y;
+        let x = eye.x + t * ray.x;
+        let z = eye.z + t * ray.z;
+        var uv = (vec2(x, z) - vec2(bbox_min.x, bbox_min.z)) / vec2(bbox_max.x - bbox_min.x, bbox_max.z - bbox_min.z);
+        uv.x = 1.0 - uv.x;
+        uv.y = 1.0 - uv.y;
+        if t < dist && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 {
+            dist = t;
+            color = textureSample(cubemap, cubemap_sampler, uv, 5);
+        }
+    }
+
+    return color;
+}
+
 @fragment
 fn main_fs(in: VertexOutput) -> @location(0) vec4<f32> {
     let xy = in.clip_position.xy / vec2<f32>(camera.resolution);
-    let color = sdf_3d(in.clip_position.xy);
+
+    let color = sdf_scene(in.clip_position.xy);
+    // let color = draw_lumen_cards(in.clip_position.xy);
 
     return color;
 }

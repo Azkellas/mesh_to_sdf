@@ -1,4 +1,5 @@
 //! Contains all the passes used in the renderer.
+pub mod cubemap_generation_pass;
 pub mod mip_generation_pass;
 pub mod model_render_pass;
 pub mod raymarch_pass;

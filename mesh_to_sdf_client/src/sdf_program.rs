@@ -69,7 +69,6 @@ struct Parameters {
     file_name: Option<String>,
     gizmo_mode: GizmoMode,
     cell_count: [u32; 3],
-    bounding_box_extent: f32,
     render_mode: RenderMode,
     sdf_sign_method: mesh_to_sdf::SignMethod,
     enable_shadows: bool,
@@ -92,7 +91,9 @@ pub struct Settings {
     pub surface_width: f32,
     pub point_size: f32,
     pub raymarch_mode: u32,
-    pub _padding: [f32; 1],
+    pub bounding_box_extent: f32,
+    pub mesh_bbox_min: [f32; 4],
+    pub mesh_bbox_max: [f32; 4],
 }
 
 pub struct SettingsData {
@@ -149,6 +150,7 @@ struct Passes {
     shadow: crate::passes::shadow_pass::ShadowPass,
     voxels: crate::passes::voxel_render_pass::VoxelRenderPass,
     raymarch: crate::passes::raymarch_pass::RaymarchRenderPass,
+    cube_map: crate::passes::cubemap_generation_pass::CubemapGenerationPass,
 }
 
 pub struct SdfProgram {
@@ -166,6 +168,11 @@ pub struct SdfProgram {
     command_stack: command_stack::CommandStack,
     alert_message: Option<(String, web_time::Instant)>,
 
+    cubemap: Texture,
+    cubemap_depth: Texture,
+    cubemap_uniforms: wgpu::Buffer,
+    cubemap_bind_group: wgpu::BindGroup,
+    cubemap_bind_group_layout: wgpu::BindGroupLayout,
     sdf_vertices: Vec<[f32; 3]>,
     sdf_indices: Vec<u32>,
 }
@@ -184,8 +191,10 @@ impl SdfProgram {
     }
 
     pub fn required_limits() -> wgpu::Limits {
-        // Stricter than default.
-        wgpu::Limits::downlevel_defaults()
+        wgpu::Limits {
+            max_bind_groups: 8,
+            ..Default::default()
+        }
     }
 
     pub fn required_features() -> wgpu::Features {
@@ -230,7 +239,7 @@ impl SdfProgram {
 
         let size = surface.get_current_texture().unwrap().texture.size();
 
-        let depth_map = texture::Texture::create_depth_texture(device, &size, "depth_texture");
+        let depth_map = texture::Texture::create_depth_texture(device, size, "depth_texture");
         let camera = Self::create_camera(device);
 
         let settings = SettingsData::new(
@@ -249,7 +258,9 @@ impl SdfProgram {
                 surface_width: 0.02,
                 point_size: 0.3,
                 raymarch_mode: RaymarchMode::Trilinear as u32,
-                _padding: [0.0; 1],
+                bounding_box_extent: 1.1,
+                mesh_bbox_min: [0.0, 0.0, 0.0, 0.0],
+                mesh_bbox_max: [0.0, 0.0, 0.0, 0.0],
             },
         );
 
@@ -281,23 +292,6 @@ impl SdfProgram {
             &shadow_pass.map,
         )?;
 
-        let raymarch = crate::passes::raymarch_pass::RaymarchRenderPass::new(
-            device,
-            swapchain_format,
-            &camera,
-            &settings.bind_group_layout,
-            &shadow_pass.map,
-        )?;
-
-        let pass = Passes {
-            sdf: sdf_pass,
-            mip_gen: mip_gen_pass,
-            model: model_render_pass,
-            shadow: shadow_pass,
-            voxels,
-            raymarch,
-        };
-
         let parameters = Parameters {
             file_name: None,
             gizmo_mode: GizmoMode::Translate,
@@ -305,7 +299,121 @@ impl SdfProgram {
             render_mode: RenderMode::Sdf,
             sdf_sign_method: mesh_to_sdf::SignMethod::default(),
             enable_shadows: false, // deactivating shadows for now.
-            bounding_box_extent: 1.1,
+        };
+
+        let size3d = wgpu::Extent3d {
+            width: 2048,
+            height: 2048,
+            depth_or_array_layers: 6,
+        };
+        let cubemap = Texture::create_render_target(device, size3d, Some("mesh_cubemap"), false);
+        let cubemap_depth = Texture::create_depth_texture(device, size3d, "mesh_cubemap_depth");
+        let cubemap_uniforms = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Cubemap Uniform Buffer"),
+            size: 6 * 16 * std::mem::size_of::<f32>() as u64,
+            mapped_at_creation: false,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let cubemap_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2Array,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                            view_dimension: wgpu::TextureViewDimension::D2Array,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: wgpu::BufferSize::new(cubemap_uniforms.size()),
+                        },
+                        count: None,
+                    },
+                ],
+                label: Some("cubemap_bind_group_layout"),
+            });
+
+        let cubemap_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &cubemap_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&cubemap.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&cubemap.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&cubemap_depth.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&cubemap_depth.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: cubemap_uniforms.as_entire_binding(),
+                },
+            ],
+            label: Some("cubemap_bind_group"),
+        });
+
+        let raymarch = crate::passes::raymarch_pass::RaymarchRenderPass::new(
+            device,
+            swapchain_format,
+            &camera,
+            &settings.bind_group_layout,
+            &shadow_pass.map,
+            &cubemap_bind_group_layout,
+        )?;
+
+        let cubemap_generation_pass =
+            crate::passes::cubemap_generation_pass::CubemapGenerationPass::new(
+                device,
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+                &camera,
+            )?;
+        let pass = Passes {
+            sdf: sdf_pass,
+            mip_gen: mip_gen_pass,
+            model: model_render_pass,
+            shadow: shadow_pass,
+            voxels,
+            raymarch,
+            cube_map: cubemap_generation_pass,
         };
 
         Ok(SdfProgram {
@@ -322,7 +430,11 @@ impl SdfProgram {
             last_run_info: None,
             command_stack: command_stack::CommandStack::new(20),
             alert_message: None,
-
+            cubemap,
+            cubemap_bind_group,
+            cubemap_bind_group_layout,
+            cubemap_depth,
+            cubemap_uniforms,
             sdf_vertices: vec![],
             sdf_indices: vec![],
         })
@@ -364,6 +476,7 @@ impl SdfProgram {
             swapchain_format,
             &self.camera,
             &self.settings.bind_group_layout,
+            &self.cubemap_bind_group_layout,
         )?;
 
         Ok(())
@@ -382,7 +495,7 @@ impl SdfProgram {
             depth_or_array_layers: 1,
         };
 
-        self.depth_map = texture::Texture::create_depth_texture(device, &size, "depth_texture");
+        self.depth_map = texture::Texture::create_depth_texture(device, size, "depth_texture");
         self.camera.update_resolution([size.width, size.height]);
     }
 
@@ -521,6 +634,7 @@ impl SdfProgram {
                 &self.camera,
                 self.sdf.as_ref().unwrap(),
                 &self.settings,
+                &self.cubemap_bind_group,
             );
 
             queue.submit(Some(command_encoder.finish()));
@@ -608,6 +722,7 @@ impl SdfProgram {
                     },
                 );
 
+                // TODO: do it in a single pass.
                 let MinMaxResult::MinMax(xmin, xmax) = vertices.iter().map(|v| v[0]).minmax()
                 else {
                     anyhow::bail!("Bounding box is ill-defined")
@@ -627,6 +742,8 @@ impl SdfProgram {
                     triangle_count: indices.len() / 3,
                     bounding_box: [xmin, ymin, zmin, xmax, ymax, zmax],
                 };
+                self.settings.settings.mesh_bbox_min = [xmin, ymin, zmin, 0.0];
+                self.settings.settings.mesh_bbox_max = [xmax, ymax, zmax, 0.0];
                 self.model_info = Some(model_info);
 
                 self.sdf_vertices = vertices;
@@ -646,7 +763,9 @@ impl SdfProgram {
                 self.camera.camera.look_at.distance =
                     (xmax - xmin).max(ymax - ymin).max(zmax - zmin) * 2.0;
 
-                self.generate_sdf(device)
+                self.generate_sdf(device)?;
+                self.generate_cubemap(device, queue)?;
+                Ok(())
             }
         }
     }
@@ -668,12 +787,13 @@ impl SdfProgram {
             (model_info.bounding_box[5] - model_info.bounding_box[2]) / 2.0,
         ];
 
-        let xmin = middle[0] - half_size[0] * self.parameters.bounding_box_extent;
-        let xmax = middle[0] + half_size[0] * self.parameters.bounding_box_extent;
-        let ymin = middle[1] - half_size[1] * self.parameters.bounding_box_extent;
-        let ymax = middle[1] + half_size[1] * self.parameters.bounding_box_extent;
-        let zmin = middle[2] - half_size[2] * self.parameters.bounding_box_extent;
-        let zmax = middle[2] + half_size[2] * self.parameters.bounding_box_extent;
+        let bounding_box_extent = self.settings.settings.bounding_box_extent;
+        let xmin = middle[0] - half_size[0] * bounding_box_extent;
+        let xmax = middle[0] + half_size[0] * bounding_box_extent;
+        let ymin = middle[1] - half_size[1] * bounding_box_extent;
+        let ymax = middle[1] + half_size[1] * bounding_box_extent;
+        let zmin = middle[2] - half_size[2] * bounding_box_extent;
+        let zmax = middle[2] + half_size[2] * bounding_box_extent;
 
         let start_cell = [xmin, ymin, zmin];
         let end_cell = [xmax, ymax, zmax];
@@ -691,6 +811,171 @@ impl SdfProgram {
         self.last_run_info = Some(LastRunInfo {
             time: start.elapsed().as_secs_f32() * 1000.0,
             size: self.parameters.cell_count,
+        });
+
+        Ok(())
+    }
+
+    fn generate_cubemap(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Result<()> {
+        let size = [2048, 2048];
+
+        let mut camera = Self::create_camera(device);
+
+        let bounding_box = self.model_info.as_ref().unwrap().bounding_box;
+        let bbx = 0.5 * (bounding_box[3] - bounding_box[0]);
+        let bby = 0.5 * (bounding_box[4] - bounding_box[1]);
+        let bbz = 0.5 * (bounding_box[5] - bounding_box[2]);
+        let bb_center = glam::Vec3::new(
+            (bounding_box[0] + bounding_box[3]) * 0.5,
+            (bounding_box[1] + bounding_box[4]) * 0.5,
+            (bounding_box[2] + bounding_box[5]) * 0.5,
+        );
+
+        let mut uniforms = [glam::Mat4::IDENTITY; 6];
+
+        (0..6).for_each(|i| {
+            let (eye, proj, view) = match i {
+                0 => {
+                    // axis +X
+                    let eye = bb_center - bbx * glam::Vec3::X;
+                    (
+                        eye,
+                        glam::Mat4::orthographic_rh(-bbz, bbz, -bby, bby, 0.0, 2.0 * bbx),
+                        glam::Mat4::look_at_rh(eye, bb_center, glam::Vec3::Y),
+                    )
+                }
+                1 => {
+                    // axis -x
+                    let eye = bb_center + bbx * glam::Vec3::X;
+                    (
+                        eye,
+                        glam::Mat4::orthographic_rh(-bbz, bbz, -bby, bby, 0.0, 2.0 * bbx),
+                        glam::Mat4::look_at_rh(eye, bb_center, glam::Vec3::Y),
+                    )
+                }
+                2 => {
+                    // axis +z
+                    let eye = bb_center + bbz * glam::Vec3::Z;
+                    (
+                        eye,
+                        glam::Mat4::orthographic_rh(-bbx, bbx, -bby, bby, 0.0, 2.0 * bbz),
+                        glam::Mat4::look_at_rh(eye, bb_center, glam::Vec3::Y),
+                    )
+                }
+                3 => {
+                    // axis -z
+                    let eye = bb_center - bbz * glam::Vec3::Z;
+                    (
+                        eye,
+                        glam::Mat4::orthographic_rh(-bbx, bbx, -bby, bby, 0.0, 2.0 * bbz),
+                        glam::Mat4::look_at_rh(eye, bb_center, glam::Vec3::Y),
+                    )
+                }
+                4 => {
+                    // axis +y
+                    let eye = bb_center - bby * glam::Vec3::Y;
+                    (
+                        eye,
+                        glam::Mat4::orthographic_rh(-bbx, bbx, -bbz, bbz, 0.0, 2.0 * bby),
+                        glam::Mat4::look_at_rh(eye, bb_center, glam::Vec3::Z),
+                    )
+                }
+                5 => {
+                    // axis -y
+                    let eye = bb_center + bby * glam::Vec3::Y;
+                    (
+                        eye,
+                        glam::Mat4::orthographic_rh(-bbx, bbx, -bbz, bbz, 0.0, 2.0 * bby),
+                        glam::Mat4::look_at_rh(eye, bb_center, glam::Vec3::Z),
+                    )
+                }
+                _ => unreachable!(),
+            };
+
+            println!("I {}, eye: {:?}", i, eye);
+            camera.uniform.view_proj = proj * view;
+            camera.uniform.view = view;
+            camera.uniform.proj = proj;
+            camera.uniform.view_inv = view.inverse();
+            camera.uniform.proj_inv = proj.inverse();
+            camera.uniform.eye = eye.extend(1.0);
+            camera.uniform.resolution = size;
+
+            uniforms[i as usize] = camera.uniform.view_proj;
+
+            queue.write_buffer(&camera.buffer, 0, bytemuck::cast_slice(&[camera.uniform]));
+
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("generate_cubemap"),
+            });
+
+            let layer_view = self
+                .cubemap
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor {
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: i,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                });
+
+            let depth_view = self
+                .cubemap_depth
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor {
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: i,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                });
+
+            let whole_texture_range = wgpu::ImageSubresourceRange {
+                aspect: wgpu::TextureAspect::All,
+                base_mip_level: 0,
+                mip_level_count: None,
+                base_array_layer: i,
+                array_layer_count: Some(1),
+            };
+
+            encoder.clear_texture(&self.cubemap.texture, &whole_texture_range);
+            encoder.clear_texture(&self.cubemap_depth.texture, &whole_texture_range);
+
+            for model in &self.models {
+                self.pass
+                    .cube_map
+                    .run(&mut encoder, &layer_view, &depth_view, &camera, model);
+            }
+
+            queue.submit(Some(encoder.finish()));
+        });
+
+        queue.write_buffer(&self.cubemap_uniforms, 0, bytemuck::bytes_of(&uniforms));
+
+        self.cubemap_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &self.cubemap_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&self.cubemap.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.cubemap.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&self.cubemap_depth.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&self.cubemap_depth.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: self.cubemap_uniforms.as_entire_binding(),
+                },
+            ],
+            label: Some("cubemap_bind_group"),
         });
 
         Ok(())
