@@ -27,6 +27,7 @@ impl VoxelRenderPass {
         voxel_bind_group_layout: &wgpu::BindGroupLayout,
         settings_bind_group_layout: &wgpu::BindGroupLayout,
         shadow_bind_group_layout: &wgpu::BindGroupLayout,
+        cubemap_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> Result<wgpu::RenderPipeline> {
         let draw_shader = ShaderBuilder::create_module(device, "draw_voxels.wgsl")?;
 
@@ -38,6 +39,7 @@ impl VoxelRenderPass {
                     &camera.bind_group_layout,
                     settings_bind_group_layout,
                     shadow_bind_group_layout,
+                    cubemap_bind_group_layout,
                 ],
                 push_constant_ranges: &[],
             });
@@ -129,6 +131,7 @@ impl VoxelRenderPass {
         view_format: wgpu::TextureFormat,
         camera: &CameraData,
         settings_bind_group_layout: &wgpu::BindGroupLayout,
+        cubemap_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> Result<()> {
         self.render_pipeline = Self::create_pipeline(
             device,
@@ -137,6 +140,7 @@ impl VoxelRenderPass {
             &self.voxel_bind_group_layout,
             settings_bind_group_layout,
             self.shadow_bind_group_layout.as_ref().unwrap(),
+            cubemap_bind_group_layout,
         )?;
         Ok(())
     }
@@ -206,6 +210,7 @@ impl VoxelRenderPass {
         camera: &CameraData,
         settings_bind_group_layout: &wgpu::BindGroupLayout,
         shadow_map: &shadow_map::ShadowMap,
+        cubemap_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> Result<Self> {
         // TODO: copy pasted from model_render_pass, maybe we can merge the two.
         let voxel_bind_group_layout = Self::get_bind_group_layout(device);
@@ -222,6 +227,7 @@ impl VoxelRenderPass {
             &voxel_bind_group_layout,
             settings_bind_group_layout,
             &render_shadow_bind_group_layout,
+            cubemap_bind_group_layout,
         )?;
 
         let voxel = create_box(device);
@@ -236,6 +242,7 @@ impl VoxelRenderPass {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn run(
         &mut self,
         command_encoder: &mut wgpu::CommandEncoder,
@@ -244,6 +251,7 @@ impl VoxelRenderPass {
         camera: &CameraData,
         sdf: &Sdf,
         settings: &SettingsData,
+        cubemap_bind_group: &wgpu::BindGroup,
     ) {
         // need to draw it each frame to update depth map.
         command_encoder.push_debug_group("render particles");
@@ -297,6 +305,7 @@ impl VoxelRenderPass {
             rpass.set_bind_group(1, &camera.bind_group, &[]);
             rpass.set_bind_group(2, &settings.bind_group, &[]);
             rpass.set_bind_group(3, self.shadow_bind_group.as_ref().unwrap(), &[]);
+            rpass.set_bind_group(4, cubemap_bind_group, &[]);
             rpass.set_vertex_buffer(0, self.voxel.vertex_buffer.slice(..));
             rpass.set_index_buffer(self.voxel.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             rpass.draw_indexed(0..self.voxel.index_count, 0, from_index..to_index);

@@ -33,12 +33,22 @@ struct VisUniforms {
     surface_width: f32,
     point_size: f32,
     raymarch_mode: u32,
+    bounding_box_extension: f32,
+    mesh_bounding_box_min: vec4<f32>,
+    mesh_bounding_box_max: vec4<f32>,
+    map_material: u32,
 };
 @group(2) @binding(0) var<uniform> vis_uniforms: VisUniforms;
 
 @group(3) @binding(0) var<uniform> shadow_camera: CameraUniform;
 @group(3) @binding(1) var shadow_map: texture_2d<f32>;
 @group(3) @binding(2) var shadow_sampler: sampler;
+
+@group(4) @binding(0) var cubemap: texture_2d_array<f32>;
+@group(4) @binding(1) var cubemap_sampler: sampler;
+@group(4) @binding(2) var cubemap_depth: texture_2d_array<f32>;
+@group(4) @binding(3) var cubemap_depth_sampler: sampler;
+@group(4) @binding(4) var<uniform> cubemap_viewprojs: array<mat4x4<f32>, 6>;
 
 struct VertexInput {
     @location(0) vertex_position: vec3<f32>,
@@ -50,8 +60,10 @@ struct VertexInput {
 struct VertexOutput {
     @builtin(position) svposition: vec4<f32>,
     @location(0) position: vec4<f32>,
-    @location(1) normal: vec4<f32>,
-    @location(2) distance: f32,
+    @location(1) cell_center: vec4<f32>,
+    @location(2) normal: vec4<f32>,
+    @location(3) distance: f32,
+    @location(4) cell_idx: u32,
 };
 
 
@@ -99,7 +111,7 @@ fn main_vs(
     let cell_idx = vec3<f32>(f32(cell_x), f32(cell_y), f32(cell_z));
     let cell = uniforms.start.xyz + cell_idx * cell_size;
 
-    let world_pos = cell + in.vertex_position * uniforms.cell_size.xyz;
+    let world_pos = cell + in.vertex_position * uniforms.cell_size.xyz * 0.5;
 
     // cell view position 
     let svposition = camera.view_proj * vec4<f32>(world_pos, 1.0);
@@ -109,22 +121,96 @@ fn main_vs(
     var out: VertexOutput;
     out.svposition = svposition;
     out.position = vec4(world_pos, 1.0);
+    out.cell_center = vec4(cell, 1.0);
     out.normal = vec4(in.normal, 0.0);
     out.distance = distance;
+    out.cell_idx = ordered_indices[in.instance_index];
     return out;
 }
 
+fn get_albedo(p: vec3<f32>) -> vec3<f32> {
+    let bbox_center = (vis_uniforms.mesh_bounding_box_min.xyz + vis_uniforms.mesh_bounding_box_max.xyz) * 0.5;
+    let bbox_size = vis_uniforms.mesh_bounding_box_max.xyz - vis_uniforms.mesh_bounding_box_min.xyz;
+    let bbox_min = bbox_center - bbox_size * 0.5;
+    let bbox_max = bbox_center + bbox_size * 0.5;
+
+    let pmin = p - bbox_min;
+    let pmax = bbox_max - p;
+    let mini = min(pmin, pmax);
+    let min = min(mini.x, min(mini.y, mini.z));
+
+    var fars = array(bbox_size.x, bbox_size.x, bbox_size.z, bbox_size.z, bbox_size.y, bbox_size.y);
+    var dists = array(pmin.x, pmax.x, pmin.z, pmax.z, pmin.y, pmax.y);
+
+    var layer = -1;
+
+    var min_dist = 1e10;
+    for (var i = 0; i < 6; i = i + 1) {
+        var projected = cubemap_viewprojs[i] * vec4(p, 1.0);
+        projected /= projected.w;
+        var uv = projected.xy * 0.5 + 0.5;
+        uv.y = 1.0 - uv.y;
+        let depth = textureSample(cubemap_depth, cubemap_depth_sampler, uv, i).x;
+        let depth_lin = (1.0 - depth) * fars[i];
+        let delta = abs(depth_lin - projected.z);
+        if delta < min_dist && depth > 0.0 {
+            layer = i;
+            min_dist = delta;
+        }
+    }
+
+
+    var color = vec3(1.0, 0.0, 1.0);
+    if layer >= 0 {
+        var projected = cubemap_viewprojs[layer] * vec4(p, 1.0);
+        projected /= projected.w;
+        var uv = projected.xy * 0.5 + 0.5;
+        uv.y = 1.0 - uv.y;
+        color = textureSample(cubemap, cubemap_sampler, uv, layer).xyz;
+    }
+
+    return color;
+}
 
 @fragment
 fn main_fs(in: VertexOutput) -> @location(0) vec4<f32> {
-    var color = vec3(0.5, 0.5, 0.5);
+    // We send the cell center because we want a single color per cell.
+    var color = mix(vec3(0.5, 0.5, 0.5), get_albedo(in.cell_center.xyz), f32(vis_uniforms.map_material > 0));
 
     let light = shadow_camera.eye.xyz;
     let light_dir = normalize(light - in.position.xyz);
     let ambiant = 0.2;
     let diffuse = max(0.0, dot(in.normal.xyz, light_dir));
 
-    var diffuse_strength = 0.5;
+    var diffuse_strength = 1.0;
+
+    var shadow_uv = shadow_camera.view_proj * vec4<f32>(in.position.xyz, 1.0);
+    shadow_uv /= shadow_uv.w;
+    shadow_uv.x = shadow_uv.x * 0.5 + 0.5;
+    shadow_uv.y = shadow_uv.y * -0.5 + 0.5;
+    var depth = shadow_uv.z;
+
+    let threshold = depth * 1.05;
+
+    let PCF: bool = true;
+
+    if PCF {
+        var light_depth = 0.0;
+        let inv_res = vec2<f32>(1.0 / f32(camera.resolution.x), 1.0 / f32(camera.resolution.y));
+        for (var y = -1.; y <= 1.; y += 1.0) {
+            for (var x = -1.; x <= 1.; x += 1.0) {
+                let pdepth = textureSample(shadow_map, shadow_sampler, shadow_uv.xy + vec2(x, y) * inv_res).x;
+                light_depth += f32(pdepth < threshold);
+            }
+        }
+        light_depth /= 9.0;
+
+        diffuse_strength *= light_depth;
+    } else {
+        let pdepth = textureSample(shadow_map, shadow_sampler, shadow_uv.xy).x;
+        diffuse_strength *= f32(pdepth < threshold);
+    }
+
 
     let view_dir = normalize(camera.eye.xyz - in.position.xyz);
     let half_dir = normalize(view_dir + light_dir);
