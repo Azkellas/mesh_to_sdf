@@ -288,14 +288,6 @@ impl SdfProgram {
             &shadow_pass.map,
         )?;
 
-        let voxels = crate::passes::voxel_render_pass::VoxelRenderPass::new(
-            device,
-            swapchain_format,
-            &camera,
-            &settings.bind_group_layout,
-            &shadow_pass.map,
-        )?;
-
         let parameters = Parameters {
             file_name: None,
             gizmo_mode: GizmoMode::Translate,
@@ -395,6 +387,16 @@ impl SdfProgram {
             label: Some("cubemap_bind_group"),
         });
 
+        let voxels = crate::passes::voxel_render_pass::VoxelRenderPass::new(
+            device,
+            swapchain_format,
+            &camera,
+            &settings.bind_group_layout,
+            &shadow_pass.map,
+            &cubemap_bind_group_layout,
+        )?;
+
+
         let raymarch = crate::passes::raymarch_pass::RaymarchRenderPass::new(
             device,
             swapchain_format,
@@ -473,6 +475,7 @@ impl SdfProgram {
             swapchain_format,
             &self.camera,
             &self.settings.bind_group_layout,
+            &self.cubemap_bind_group_layout,
         )?;
 
         self.pass.raymarch.update_pipeline(
@@ -622,6 +625,7 @@ impl SdfProgram {
                 &self.camera,
                 self.sdf.as_ref().unwrap(),
                 &self.settings,
+                &self.cubemap_bind_group,
             );
 
             queue.submit(Some(command_encoder.finish()));
