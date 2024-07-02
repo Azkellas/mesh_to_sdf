@@ -37,6 +37,7 @@ struct VisUniforms {
     bounding_box_extension: f32,
     mesh_bounding_box_min: vec4<f32>,
     mesh_bounding_box_max: vec4<f32>,
+    map_material: u32,
 };
 
 const MODE_SNAP: u32 = 0u;
@@ -145,17 +146,18 @@ fn sdf_grid(position: vec3<f32>) -> f32 {
             let cell_size = uniforms.cell_size.xyz;
             let cell_count = uniforms.cell_count.xyz;
             let cell_index = (position - uniforms.start.xyz) / cell_size;
+            let cell_fract = fract(cell_index);
             let idx = vec3<i32>(floor(cell_index));
 
-            let c00 = get_distance(idx + vec3<i32>(0, 0, 0)) * (1.0 - fract(cell_index.x)) + get_distance(idx + vec3<i32>(1, 0, 0)) * fract(cell_index.x);
-            let c01 = get_distance(idx + vec3<i32>(0, 0, 1)) * (1.0 - fract(cell_index.x)) + get_distance(idx + vec3<i32>(1, 0, 1)) * fract(cell_index.x);
-            let c10 = get_distance(idx + vec3<i32>(0, 1, 0)) * (1.0 - fract(cell_index.x)) + get_distance(idx + vec3<i32>(1, 1, 0)) * fract(cell_index.x);
-            let c11 = get_distance(idx + vec3<i32>(0, 1, 1)) * (1.0 - fract(cell_index.x)) + get_distance(idx + vec3<i32>(1, 1, 1)) * fract(cell_index.x);
+            let c00 = get_distance(idx + vec3(0, 0, 0)) * (1.0 - cell_fract.x) + get_distance(idx + vec3(1, 0, 0)) * cell_fract.x;
+            let c01 = get_distance(idx + vec3(0, 0, 1)) * (1.0 - cell_fract.x) + get_distance(idx + vec3(1, 0, 1)) * cell_fract.x;
+            let c10 = get_distance(idx + vec3(0, 1, 0)) * (1.0 - cell_fract.x) + get_distance(idx + vec3(1, 1, 0)) * cell_fract.x;
+            let c11 = get_distance(idx + vec3(0, 1, 1)) * (1.0 - cell_fract.x) + get_distance(idx + vec3(1, 1, 1)) * cell_fract.x;
 
-            let c0 = c00 * (1.0 - fract(cell_index.y)) + c10 * fract(cell_index.y);
-            let c1 = c01 * (1.0 - fract(cell_index.y)) + c11 * fract(cell_index.y);
+            let c0 = c00 * (1.0 - cell_fract.y) + c10 * cell_fract.y;
+            let c1 = c01 * (1.0 - cell_fract.y) + c11 * cell_fract.y;
 
-            let c = c0 * (1.0 - fract(cell_index.z)) + c1 * fract(cell_index.z);
+            let c = c0 * (1.0 - cell_fract.z) + c1 * cell_fract.z;
 
             distance = c;
         }
@@ -307,7 +309,6 @@ fn sdf_3d(eye: vec3<f32>, ray: vec3<f32>) -> vec4<f32> {
     }
 
 
-
     // actual ray marching.
     var dist = 0.0;
     let MAX_STEPS = 100;
@@ -342,9 +343,7 @@ fn sdf_scene(p: vec2<f32>) -> vec4<f32> {
             color = phong_lighting(0.8, 0.5, 50.0, position, eye, vec3(-5.0, 5.0, 5.0), vec3(0.4, 1.0, 0.4));
         } else {
             // add lighting only if we hit something.
-            // color = phong_lighting(0.8, 0.5, 50.0, position, eye, shadow_camera.eye.xyz, color);
-            color = get_albedo(position).rgb;
-
+            color = mix(vec3(0.5, 0.5, 0.5), get_albedo(position).rgb, f32(vis_uniforms.map_material > 0));
 
             let light = shadow_camera.eye.xyz;
             let light_dir = normalize(light - position);

@@ -24,7 +24,10 @@ pub struct Model {
 
 impl Model {
     pub fn from_gtlf(device: &wgpu::Device, queue: &wgpu::Queue, model: &easy_gltf::Model) -> Self {
-        let indices = model.indices().cloned().unwrap_or_else(|| (0..(model.vertices().len() as u32)).collect());
+        let indices = model
+            .indices()
+            .cloned()
+            .unwrap_or_else(|| (0..(model.vertices().len() as u32)).collect());
         let vertices = model
             .vertices()
             .iter()

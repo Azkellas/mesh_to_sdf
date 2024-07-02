@@ -94,6 +94,8 @@ pub struct Settings {
     pub bounding_box_extent: f32,
     pub mesh_bbox_min: [f32; 4],
     pub mesh_bbox_max: [f32; 4],
+    pub map_material: u32, // 0: no, > 0: add material to voxels and raymarch
+    pub _padding: [f32; 3],
 }
 
 pub struct SettingsData {
@@ -261,6 +263,8 @@ impl SdfProgram {
                 bounding_box_extent: 1.1,
                 mesh_bbox_min: [0.0, 0.0, 0.0, 0.0],
                 mesh_bbox_max: [0.0, 0.0, 0.0, 0.0],
+                map_material: 1, // map material on voxels and raymarch
+                _padding: [0.0, 0.0, 0.0],
             },
         );
 
@@ -892,7 +896,6 @@ impl SdfProgram {
                 _ => unreachable!(),
             };
 
-            println!("I {}, eye: {:?}", i, eye);
             camera.uniform.view_proj = proj * view;
             camera.uniform.view = view;
             camera.uniform.proj = proj;
