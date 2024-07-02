@@ -153,6 +153,37 @@ impl SdfProgram {
 
             Self::end_category(ui);
 
+            let mut map_material = self.settings.settings.map_material > 0;
+            ui.label("Map Material on Voxels and Raymarch");
+            ui.checkbox(&mut map_material, "");
+            ui.end_row();
+            if map_material != (self.settings.settings.map_material > 0) {
+                // Save old state.
+                let old_state = command_stack::State {
+                    parameters: self.parameters.clone(),
+                    settings: self.settings.settings,
+                };
+
+                self.settings.settings.map_material = if map_material { 1 } else { 0 };
+
+                // Get new state.
+                let new_state = command_stack::State {
+                    parameters: self.parameters.clone(),
+                    settings: self.settings.settings,
+                };
+
+                // Push with the old and new state.
+                self.command_stack.push(
+                    "Map Material on Voxels and Raymarch",
+                    command_stack::Command {
+                        old_state,
+                        new_state,
+                    },
+                );
+            }
+
+            Self::end_category(ui);
+
             if ui.button("Generate").clicked() {
                 #[allow(clippy::collapsible_if)]
                 if self.generate_sdf(device).is_err() {
