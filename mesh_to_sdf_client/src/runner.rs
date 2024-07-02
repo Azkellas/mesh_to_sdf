@@ -449,7 +449,7 @@ async fn run(
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
                 // Update the program before drawing.
-                program.update(&context.queue);
+                program.update(&context.queue, surface, &context.device, &context.adapter);
 
                 // Render the program first so the ui is on top.
                 program.render(&view, &context.device, &context.queue);

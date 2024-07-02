@@ -72,6 +72,7 @@ struct Parameters {
     render_mode: RenderMode,
     sdf_sign_method: mesh_to_sdf::SignMethod,
     enable_shadows: bool,
+    enable_backface_culling: bool,
 }
 
 #[repr(C)]
@@ -281,13 +282,6 @@ impl SdfProgram {
 
         let shadow_pass = crate::passes::shadow_pass::ShadowPass::new(device, shadow_map)?;
 
-        let model_render_pass = crate::passes::model_render_pass::ModelRenderPass::new(
-            device,
-            swapchain_format,
-            &camera,
-            &shadow_pass.map,
-        )?;
-
         let parameters = Parameters {
             file_name: None,
             gizmo_mode: GizmoMode::Translate,
@@ -295,7 +289,16 @@ impl SdfProgram {
             render_mode: RenderMode::Sdf,
             sdf_sign_method: mesh_to_sdf::SignMethod::default(),
             enable_shadows: false, // deactivating shadows for now.
+            enable_backface_culling: false,
         };
+
+        let model_render_pass = crate::passes::model_render_pass::ModelRenderPass::new(
+            device,
+            swapchain_format,
+            &camera,
+            &shadow_pass.map,
+            parameters.enable_backface_culling,
+        )?;
 
         let size3d = wgpu::Extent3d {
             width: 2048,
@@ -396,7 +399,6 @@ impl SdfProgram {
             &cubemap_bind_group_layout,
         )?;
 
-
         let raymarch = crate::passes::raymarch_pass::RaymarchRenderPass::new(
             device,
             swapchain_format,
@@ -459,9 +461,12 @@ impl SdfProgram {
         self.pass.mip_gen.update_pipeline(device)?;
         self.pass.shadow.update_pipeline(device)?;
 
-        self.pass
-            .model
-            .update_pipeline(device, swapchain_format, &self.camera)?;
+        self.pass.model.update_pipeline(
+            device,
+            swapchain_format,
+            &self.camera,
+            self.parameters.enable_backface_culling,
+        )?;
 
         self.pass.sdf.update_pipeline(
             device,
@@ -506,7 +511,13 @@ impl SdfProgram {
         self.camera.update_resolution([size.width, size.height]);
     }
 
-    pub fn update(&mut self, queue: &wgpu::Queue) {
+    pub fn update(
+        &mut self,
+        queue: &wgpu::Queue,
+        surface: &wgpu::Surface,
+        device: &wgpu::Device,
+        adapter: &wgpu::Adapter,
+    ) {
         let last_frame_duration = self.last_update.elapsed().as_secs_f32();
         self.frame_rate.update(last_frame_duration);
         self.last_update = web_time::Instant::now();
@@ -531,6 +542,20 @@ impl SdfProgram {
             0,
             bytemuck::cast_slice(&[shadow_map.light.uniform]),
         );
+
+        if self.parameters.enable_backface_culling != self.pass.model.is_culling_backfaces() {
+            let swapchain_capabilities = surface.get_capabilities(adapter);
+            let swapchain_format = swapchain_capabilities.formats[0];
+            self.pass
+                .model
+                .update_pipeline(
+                    device,
+                    swapchain_format,
+                    &self.camera,
+                    self.parameters.enable_backface_culling,
+                )
+                .unwrap();
+        }
     }
 
     pub fn render(&mut self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue) {
