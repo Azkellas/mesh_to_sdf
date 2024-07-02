@@ -89,37 +89,50 @@ fn main_vs(
 // Relative to cell_radius.
 const EPSILON = 0.01;
 
-fn get_distance(in_cell: vec3<i32>) -> f32 {
+fn get_distance(in_cell: vec3<i32>, iso: f32) -> f32 {
     var cell = max(in_cell, vec3<i32>(0, 0, 0));
     cell = min(cell, vec3<i32>(uniforms.cell_count.xyz - vec3(1u)));
     let ucell = vec3<u32>(cell);
     let idx = ucell.z + ucell.y * uniforms.cell_count.z + ucell.x * uniforms.cell_count.z * uniforms.cell_count.y;
-    return sdf[idx] - vis_uniforms.surface_iso;
+    return sdf[idx] - iso;
 }
 
-fn sdf_grid(position: vec3<f32>) -> f32 {
+// Gradient descent to find to map a point to the surface.
+// Returns xyz pos w distance
+fn gradient_descent(in_position: vec3<f32>, iso: f32) -> vec4<f32> {
+    let epsilon = get_grid_epsilon();
+    var dist = 0.0;
+    let MAX_STEPS = 100;
+    var position = in_position;
+    for (var i = 0; i < MAX_STEPS; i++) {
+        dist = sdf_grid(position, iso);
+        if dist < epsilon {
+                break;
+        }
+        let normal = estimate_normal(position, iso);
+        position -= normal * dist;
+    }
+
+    return vec4(position, dist);
+}
+fn sdf_grid(position: vec3<f32>, iso: f32) -> f32 {
     // origin is inside the box, so we are inside the box.
     // snap origin to the sdf grid.
-    if position.x < uniforms.start.x || position.y < uniforms.start.y || position.z < uniforms.start.z {
-        return 100.0;
-    }
-    if position.x > uniforms.end.x || position.y > uniforms.end.y || position.z > uniforms.end.z {
+    if any(position < uniforms.start.xyz) || any(position > uniforms.end.xyz) {
         return 100.0;
     }
 
     var distance = 100.0;
 
-    // uniforms.start is the first cell, the center of the first cell.
-    let start_grid = uniforms.start.xyz - uniforms.cell_size.xyz * 0.5;
-
     switch vis_uniforms.raymarch_mode {
         case MODE_SNAP, MODE_SNAP_STYLIZED: {
             // snap the position on the grid
+            let start_grid = uniforms.start.xyz - uniforms.cell_size.xyz * 0.5;
             let cell_size = uniforms.cell_size.xyz;
             let cell_count = uniforms.cell_count.xyz;
             let cell_index = vec3<i32>(floor((position - start_grid) / cell_size));
 
-            distance = get_distance(cell_index);
+            distance = get_distance(cell_index, iso);
         }
         case MODE_TRILINEAR: {
             // 0       0'       1      1'      2
@@ -149,86 +162,36 @@ fn sdf_grid(position: vec3<f32>) -> f32 {
             let cell_fract = fract(cell_index);
             let idx = vec3<i32>(floor(cell_index));
 
-            let c00 = get_distance(idx + vec3(0, 0, 0)) * (1.0 - cell_fract.x) + get_distance(idx + vec3(1, 0, 0)) * cell_fract.x;
-            let c01 = get_distance(idx + vec3(0, 0, 1)) * (1.0 - cell_fract.x) + get_distance(idx + vec3(1, 0, 1)) * cell_fract.x;
-            let c10 = get_distance(idx + vec3(0, 1, 0)) * (1.0 - cell_fract.x) + get_distance(idx + vec3(1, 1, 0)) * cell_fract.x;
-            let c11 = get_distance(idx + vec3(0, 1, 1)) * (1.0 - cell_fract.x) + get_distance(idx + vec3(1, 1, 1)) * cell_fract.x;
+            let c_x00 = get_distance(idx + vec3(0, 0, 0), iso) * (1.0 - cell_fract.x) + get_distance(idx + vec3(1, 0, 0), iso) * cell_fract.x;
+            let c_x01 = get_distance(idx + vec3(0, 0, 1), iso) * (1.0 - cell_fract.x) + get_distance(idx + vec3(1, 0, 1), iso) * cell_fract.x;
+            let c_x10 = get_distance(idx + vec3(0, 1, 0), iso) * (1.0 - cell_fract.x) + get_distance(idx + vec3(1, 1, 0), iso) * cell_fract.x;
+            let c_x11 = get_distance(idx + vec3(0, 1, 1), iso) * (1.0 - cell_fract.x) + get_distance(idx + vec3(1, 1, 1), iso) * cell_fract.x;
 
-            let c0 = c00 * (1.0 - cell_fract.y) + c10 * cell_fract.y;
-            let c1 = c01 * (1.0 - cell_fract.y) + c11 * cell_fract.y;
+            let c_xy0 = c_x00 * (1.0 - cell_fract.y) + c_x10 * cell_fract.y;
+            let c_xy1 = c_x01 * (1.0 - cell_fract.y) + c_x11 * cell_fract.y;
 
-            let c = c0 * (1.0 - cell_fract.z) + c1 * cell_fract.z;
+            let c_xyz = c_xy0 * (1.0 - cell_fract.z) + c_xy1 * cell_fract.z;
 
-            distance = c;
+            distance = c_xyz;
         }
         case MODE_TETRAHEDRAL: {
+            // we also use the dual grid.
             let cell_size = uniforms.cell_size.xyz;
             let cell_count = uniforms.cell_count.xyz;
             let cell_index = (position - uniforms.start.xyz) / cell_size;
             let idx = vec3<i32>(floor(cell_index));
             let r = fract(cell_index);
 
-            let c = r.xyz > r.yzx;
-            let c_xy = c.x;
-            let c_yz = c.y;
-            let c_zx = c.z;
-            let c_yx = !c.x;
-            let c_zy = !c.y;
-            let c_xz = !c.z;
-
-            var s = vec3(0.0, 0.0, 0.0);
-            var vert0 = vec3(0, 0, 0);
-            var vert1 = vec3(1, 1, 1);
-            var vert2 = vec3(0, 0, 0);
-            var vert3 = vec3(1, 1, 1);
-
-            // xyz
-            if c_xy && c_yz {
-                s = r.xyz;
-                vert2.x = 1;
-                vert3.z = 0;
-            }
-            // xzy
-            if c_xz && c_zy {
-                s = r.xzy;
-                vert2.x = 1;
-                vert3.y = 0;
-            }
-            // zxy
-            if c_zx && c_xy {
-                s = r.zxy;
-                vert2.z = 1;
-                vert3.y = 0;
-            }
-            // zyx
-            if c_zy && c_yx {
-                s = r.zyx;
-                vert2.z = 1;
-                vert3.x = 0;
-            }
-            // yzx
-            if c_yz && c_zx {
-                s = r.yzx;
-                vert2.y = 1;
-                vert3.x = 0;
-            }
-            // yxz
-            if c_yx && c_xz {
-                s = r.yxz;
-                vert2.y = 1;
-                vert3.z = 0;
-            }
-
-            let bary = vec4(1.0 - s.x, s.z, s.x - s.y, s.y - s.z);
+            let tetra = compute_tetrahedral_barycenter(r);
 
             let samples = vec4(
-                get_distance(idx + vert0),
-                get_distance(idx + vert1),
-                get_distance(idx + vert2),
-                get_distance(idx + vert3)
+                get_distance(idx + vec3(0, 0, 0), iso),
+                get_distance(idx + tetra.vert2, iso),
+                get_distance(idx + tetra.vert3, iso),
+                get_distance(idx + vec3(1, 1, 1), iso)
             );
 
-            distance = dot(bary, samples);
+            distance = dot(tetra.bary, samples);
         }
         default: {}
     }
@@ -236,17 +199,17 @@ fn sdf_grid(position: vec3<f32>) -> f32 {
     return distance;
 }
 
-fn estimate_normal(p: vec3<f32>) -> vec3<f32> {
+fn estimate_normal(p: vec3<f32>, iso: f32) -> vec3<f32> {
     let epsilon = EPSILON * max(uniforms.cell_size.x, max(uniforms.cell_size.y, uniforms.cell_size.z));
     return normalize(vec3(
-        sdf_grid(vec3(p.x + epsilon, p.y, p.z)) - sdf_grid(vec3(p.x - epsilon, p.y, p.z)),
-        sdf_grid(vec3(p.x, p.y + epsilon, p.z)) - sdf_grid(vec3(p.x, p.y - epsilon, p.z)),
-        sdf_grid(vec3(p.x, p.y, p.z + epsilon)) - sdf_grid(vec3(p.x, p.y, p.z - epsilon))
+        sdf_grid(vec3(p.x + epsilon, p.y, p.z), iso) - sdf_grid(vec3(p.x - epsilon, p.y, p.z), iso),
+        sdf_grid(vec3(p.x, p.y + epsilon, p.z), iso) - sdf_grid(vec3(p.x, p.y - epsilon, p.z), iso),
+        sdf_grid(vec3(p.x, p.y, p.z + epsilon), iso) - sdf_grid(vec3(p.x, p.y, p.z - epsilon), iso)
     ));
 }
 
-fn phong_lighting(k_d: f32, k_s: f32, alpha: f32, position: vec3<f32>, eye: vec3<f32>, light_pos: vec3<f32>, light_intensity: vec3<f32>) -> vec3<f32> {
-    let N = estimate_normal(position);
+fn phong_lighting(k_d: f32, k_s: f32, alpha: f32, position: vec3<f32>, eye: vec3<f32>, light_pos: vec3<f32>, light_intensity: vec3<f32>, iso: f32) -> vec3<f32> {
+    let N = estimate_normal(position, iso);
     let L = normalize(light_pos - position);
     let V = normalize(eye - position);
     let R = normalize(reflect(-L, N));
@@ -290,7 +253,7 @@ fn intersectAABB(rayOrigin: vec3<f32>, rayDir: vec3<f32>, boxMin: vec3<f32>, box
 } 
 
 fn get_grid_epsilon() -> f32 {
-    return EPSILON * max(uniforms.cell_size.x, max(uniforms.cell_size.y, uniforms.cell_size.z));
+    return 1.0 * EPSILON * max(uniforms.cell_size.x, max(uniforms.cell_size.y, uniforms.cell_size.z));
 }
 
 // entry point of the 3d raymarching.
@@ -298,7 +261,7 @@ fn sdf_3d(eye: vec3<f32>, ray: vec3<f32>) -> vec4<f32> {
     let epsilon = get_grid_epsilon();
     var position = eye;
 
-    if eye.x < uniforms.start.x || eye.y < uniforms.start.y || eye.z < uniforms.start.z || eye.x > uniforms.end.x || eye.y > uniforms.end.y || eye.z > uniforms.end.z {
+    if any(eye < uniforms.start.xyz) || any(eye > uniforms.end.xyz) {
         let box_hit = intersectAABB(eye, ray, uniforms.start.xyz, uniforms.end.xyz);
         if box_hit.x > box_hit.y {
             // outside the box
@@ -313,7 +276,7 @@ fn sdf_3d(eye: vec3<f32>, ray: vec3<f32>) -> vec4<f32> {
     var dist = 0.0;
     let MAX_STEPS = 100;
     for (var i = 0; i < MAX_STEPS; i++) {
-        dist = sdf_grid(position);
+        dist = sdf_grid(position, vis_uniforms.surface_iso);
         if dist < epsilon {
                 break;
         }
@@ -323,7 +286,7 @@ fn sdf_3d(eye: vec3<f32>, ray: vec3<f32>) -> vec4<f32> {
     return vec4(position, dist);
 }
 
-fn sdf_scene(p: vec2<f32>) -> vec4<f32> {
+fn sdf_scene(p: vec2<f32>, iso: f32) -> vec3<f32> {
     let eye = camera.eye.xyz;
     let ray = unproject(p);
 
@@ -340,15 +303,16 @@ fn sdf_scene(p: vec2<f32>) -> vec4<f32> {
             // Stylized shading
             // It's due to the degenerated normals in the snap grid.
             // Since the gradient is stepped, the normals are 0 most of the time.
-            color = phong_lighting(0.8, 0.5, 50.0, position, eye, vec3(-5.0, 5.0, 5.0), vec3(0.4, 1.0, 0.4));
+            color = phong_lighting(0.8, 0.5, 50.0, position, eye, vec3(-5.0, 5.0, 5.0), vec3(0.4, 1.0, 0.4), iso);
         } else {
             // add lighting only if we hit something.
-            color = mix(vec3(0.5, 0.5, 0.5), get_albedo(position).rgb, f32(vis_uniforms.map_material > 0));
+            let mapped_position = gradient_descent(position, 0.0).xyz;
+            color = mix(vec3(0.5, 0.5, 0.5), get_albedo(mapped_position, 0.0).rgb, f32(vis_uniforms.map_material > 0));
 
             let light = shadow_camera.eye.xyz;
             let light_dir = normalize(light - position);
             let ambiant = 0.2;
-            let normal = estimate_normal(position);
+            let normal = estimate_normal(position, iso);
             let diffuse = max(0.0, dot(normal, light_dir));
             // var diffuse_strength = 0.5;
 
@@ -394,10 +358,10 @@ fn sdf_scene(p: vec2<f32>) -> vec4<f32> {
         }
     }
 
-    return vec4<f32>(color, 1.0);
+    return color;
 }
 
-fn get_albedo(p: vec3<f32>) -> vec4<f32> {
+fn get_albedo(p: vec3<f32>, iso: f32) -> vec4<f32> {
     let bbox_center = (vis_uniforms.mesh_bounding_box_min.xyz + vis_uniforms.mesh_bounding_box_max.xyz) * 0.5;
     let bbox_size = vis_uniforms.mesh_bounding_box_max.xyz - vis_uniforms.mesh_bounding_box_min.xyz;
     let bbox_min = bbox_center - bbox_size * 0.5;
@@ -411,7 +375,7 @@ fn get_albedo(p: vec3<f32>) -> vec4<f32> {
     var fars = array(bbox_size.x, bbox_size.x, bbox_size.z, bbox_size.z, bbox_size.y, bbox_size.y);
     var dists = array(pmin.x, pmax.x, pmin.z, pmax.z, pmin.y, pmax.y);
 
-    let normal = estimate_normal(p);
+    let normal = estimate_normal(p, iso);
 
     let epsilon = get_grid_epsilon();
     var layer = -1;
@@ -473,7 +437,7 @@ fn get_albedo(p: vec3<f32>) -> vec4<f32> {
     return color;
 }
 
-fn draw_lumen_cards(p: vec2<f32>) -> vec4<f32> {
+fn draw_lumen_cards(p: vec2<f32>) -> vec3<f32> {
     let eye = camera.eye.xyz;
     let ray = unproject(p);
 
@@ -483,7 +447,9 @@ fn draw_lumen_cards(p: vec2<f32>) -> vec4<f32> {
     let bbox_max = bbox_center + bbox_size * 0.5;
 
     var dist = 1e10;
-    var color = vec4(0.0, 0.0, 0.0, 1.0);
+    var color = vec3(0.0, 0.0, 0.0);
+
+    var pos = eye;
 
     // left plane
     if ray.x != 0.0 {
@@ -494,7 +460,8 @@ fn draw_lumen_cards(p: vec2<f32>) -> vec4<f32> {
         uv.y = 1.0 - uv.y;
         if t < dist && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 {
             dist = t;
-            color = textureSample(cubemap, cubemap_sampler, uv, 0);
+            color = textureSample(cubemap, cubemap_sampler, uv, 0).xyz;
+            pos = eye + t * ray;
         }
     }
     // right plane
@@ -507,7 +474,8 @@ fn draw_lumen_cards(p: vec2<f32>) -> vec4<f32> {
         uv.y = 1.0 - uv.y;
         if t < dist && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 {
             dist = t;
-            color = textureSample(cubemap, cubemap_sampler, uv, 1);
+            color = textureSample(cubemap, cubemap_sampler, uv, 1).xyz;
+            pos = eye + t * ray;
         }
     }
     // front plane
@@ -520,7 +488,8 @@ fn draw_lumen_cards(p: vec2<f32>) -> vec4<f32> {
         uv.y = 1.0 - uv.y;
         if t < dist && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 {
             dist = t;
-            color = textureSample(cubemap, cubemap_sampler, uv, 3);
+            color = textureSample(cubemap, cubemap_sampler, uv, 3).xyz;
+            pos = eye + t * ray;
         }
     }
     // rear plane
@@ -532,7 +501,8 @@ fn draw_lumen_cards(p: vec2<f32>) -> vec4<f32> {
         uv.y = 1.0 - uv.y;
         if t < dist && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 {
             dist = t;
-            color = textureSample(cubemap, cubemap_sampler, uv, 2);
+            color = textureSample(cubemap, cubemap_sampler, uv, 2).xyz;
+            pos = eye + t * ray;
         }
     }
     // bottom plane
@@ -544,7 +514,8 @@ fn draw_lumen_cards(p: vec2<f32>) -> vec4<f32> {
         uv.y = 1.0 - uv.y;
         if t < dist && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 {
             dist = t;
-            color = textureSample(cubemap, cubemap_sampler, uv, 4);
+            color = textureSample(cubemap, cubemap_sampler, uv, 4).xyz;
+            pos = eye + t * ray;
         }
     }
     // top plane
@@ -558,10 +529,35 @@ fn draw_lumen_cards(p: vec2<f32>) -> vec4<f32> {
         uv.y = 1.0 - uv.y;
         if t < dist && uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 {
             dist = t;
-            color = textureSample(cubemap, cubemap_sampler, uv, 5);
+            color = textureSample(cubemap, cubemap_sampler, uv, 5).xyz;
+            pos = eye + t * ray;
         }
     }
 
+    // debug tetrahedral interpolation.
+    // if dist < 1e10 {
+    //     let r = (pos - bbox_min) / bbox_size;
+    //     let tetra = compute_tetrahedral_barycenter(r);
+
+    //     if all(tetra.vert2 == vec3(1, 0, 0)) && all(tetra.vert3 == vec3(1, 1, 0)) {
+    //         color = vec3(1.0, 0.0, 0.0);
+    //     }
+    //     if all(tetra.vert2 == vec3(0, 1, 0)) && all(tetra.vert3 == vec3(0, 1, 1)) {
+    //         color = vec3(0.0, 1.0, 0.0);
+    //     }
+    //     if all(tetra.vert2 == vec3(0, 1, 0)) && all(tetra.vert3 == vec3(1, 1, 0)) {
+    //         color = vec3(0.0, 0.0, 1.0);
+    //     }
+    //     if all(tetra.vert2 == vec3(0, 0, 1)) && all(tetra.vert3 == vec3(1, 0, 1)) {
+    //         color = vec3(1.0, 0.0, 1.0);
+    //     }
+    //     if all(tetra.vert2 == vec3(0, 0, 1)) && all(tetra.vert3 == vec3(0, 1, 1)) {
+    //         color = vec3(1.0, 1.0, 0.0);
+    //     }
+    //     if all(tetra.vert2 == vec3(1, 0, 0)) && all(tetra.vert3 == vec3(1, 0, 1)) {
+    //         color = vec3(0.0, 1.0, 1.0);
+    //     }
+    // }
     return color;
 }
 
@@ -569,10 +565,74 @@ fn draw_lumen_cards(p: vec2<f32>) -> vec4<f32> {
 fn main_fs(in: VertexOutput) -> @location(0) vec4<f32> {
     let xy = in.clip_position.xy / vec2<f32>(camera.resolution);
 
-    let color = sdf_scene(in.clip_position.xy);
+    let color = sdf_scene(in.clip_position.xy, vis_uniforms.surface_iso);
     // let color = draw_lumen_cards(in.clip_position.xy);
 
-    return color;
+    return vec4(color, 1.0);
 }
 
+struct TetrahedralOutput {
+    // vert1 is always (0, 0, 0)
+    vert2: vec3<i32>,
+    vert3: vec3<i32>,
+    // vert4 is always (1, 1, 1)
+    bary: vec4<f32>,
+};
+
+fn compute_tetrahedral_barycenter(f: vec3<f32>) -> TetrahedralOutput {
+    // cf <https://www.researchgate.net/publication/353522080_Tetrahedral_Interpolation_on_Regular_Grids>
+    // and <https://www.nvidia.com/content/GTC/posters/2010/V01-Real-Time-Color-Space-Conversion-for-High-Resolution-Video.pdf>
+
+    var out: TetrahedralOutput;
+
+    // fG≥fB≥fR
+    if f.g >= f.b && f.b >= f.r {
+        // (1-fG)·[nR;nG;nB] + (fG-fB)·[nR;nG+1;nB] + (fB-fR)·[nR;nG+1;nB+1] + (fR)·[nR+1;nG+1;nB+1]
+        out.bary = vec4(1.0 - f.g, f.g - f.b, f.b - f.r, f.r);
+        out.vert2 = vec3(0, 1, 0);
+        out.vert3 = vec3(0, 1, 1);
+    }
+
+    // fB>fR>fG
+    if f.b > f.r && f.r > f.g {
+        // (1-fB)·[nR;nG;nB] + (fB-fR)·[nR;nG;nB+1] + (fR-fG)·[nR+1;nG;nB+1] + (fG)·[nR+1;nG+1;nB+1]
+        out.bary = vec4(1.0 - f.b, f.b - f.r, f.r - f.g, f.g);
+        out.vert2 = vec3(0, 0, 1);
+        out.vert3 = vec3(1, 0, 1);
+    }
+
+    // fB>fG≥fR
+    if f.b > f.g && f.g >= f.r {
+        // (1-fB)·[nR;nG;nB] + (fB-fG)·[nR;nG;nB+1] + (fG-fR)·[nR;nG+1;nB+1] + (fR)·[nR+1;nG+1;nB+1]
+        out.bary = vec4(1.0 - f.b, f.b - f.g, f.g - f.r, f.r);
+        out.vert2 = vec3(0, 0, 1);
+        out.vert3 = vec3(0, 1, 1);
+    }
+
+    // fR≥fG>fB
+    if f.r >= f.g && f.g > f.b {
+        // (1-fR)·[nR;nG;nB] + (fR-fG)·[nR+1;nG;nB] + (fG-fB)·[nR+1;nG+1;nB] + (fB)·[nR+1;nG+1;nB+1]
+        out.bary = vec4(1.0 - f.r, f.r - f.g, f.g - f.b, f.b);
+        out.vert2 = vec3(1, 0, 0);
+        out.vert3 = vec3(1, 1, 0);
+    }
+
+    // fG>fR≥fB
+    if f.g > f.r && f.r >= f.b {
+        // (1-fG)·[nR;nG;nB] + (fG-fR)·[nR;nG+1;nB] + (fR-fB)·[nR+1;nG+1;nB] + (fB)·[nR+1;nG+1;nB+1]
+        out.bary = vec4(1.0 - f.g, f.g - f.r, f.r - f.b, f.b);
+        out.vert2 = vec3(0, 1, 0);
+        out.vert3 = vec3(1, 1, 0);
+    }
+
+    // fR≥fB≥fG
+    if f.r >= f.b && f.b >= f.g {
+        // (1-fR)·[nR;nG;nB] + (fR-fB)·[nR+1;nG;nB] + (fB-fG)·[nR+1;nG;nB+1] + (fG)·[nR+1;nG+1;nB+1]
+        out.bary = vec4(1.0 - f.r, f.r - f.b, f.b - f.g, f.g);
+        out.vert2 = vec3(1, 0, 0);
+        out.vert3 = vec3(1, 0, 1);
+    }
+
+    return out;
+}
  

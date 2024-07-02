@@ -13,6 +13,7 @@ pub struct ModelRenderPass {
     pub textures_bind_group_layout: wgpu::BindGroupLayout,
     pub shadow_bind_group_layout: Option<wgpu::BindGroupLayout>,
     pub shadow_bind_group: Option<wgpu::BindGroup>,
+    backface_culling: bool,
 }
 
 impl ModelRenderPass {
@@ -23,6 +24,7 @@ impl ModelRenderPass {
         camera: &CameraData,
         shadow_bind_group_layout: &wgpu::BindGroupLayout,
         textures_bind_group_layout: &wgpu::BindGroupLayout,
+        backface_culling: bool,
     ) -> Result<wgpu::RenderPipeline> {
         let draw_shader = ShaderBuilder::create_module(device, "draw_model.wgsl")?;
 
@@ -42,7 +44,7 @@ impl ModelRenderPass {
             topology: wgpu::PrimitiveTopology::TriangleList,
             strip_index_format: None,
             front_face: wgpu::FrontFace::Ccw,
-            cull_mode: Some(wgpu::Face::Back),
+            cull_mode: backface_culling.then_some(wgpu::Face::Back),
             polygon_mode: wgpu::PolygonMode::Fill,
             unclipped_depth: false,
             conservative: false,
@@ -84,6 +86,7 @@ impl ModelRenderPass {
         device: &wgpu::Device,
         view_format: wgpu::TextureFormat,
         camera: &CameraData,
+        backface_culling: bool,
     ) -> Result<()> {
         self.render_pipeline = Self::create_pipeline(
             device,
@@ -92,10 +95,15 @@ impl ModelRenderPass {
             camera,
             self.shadow_bind_group_layout.as_ref().unwrap(),
             &self.textures_bind_group_layout,
+            backface_culling,
         )?;
+        self.backface_culling = backface_culling;
         Ok(())
     }
 
+    pub fn is_culling_backfaces(&self) -> bool {
+        self.backface_culling
+    }
     fn create_shadow_bind_group(
         device: &wgpu::Device,
         shadow_map: &shadow_map::ShadowMap,
@@ -200,6 +208,7 @@ impl ModelRenderPass {
         view_format: wgpu::TextureFormat,
         camera: &CameraData,
         shadow_map: &shadow_map::ShadowMap,
+        backface_culling: bool,
     ) -> Result<Self> {
         let render_shadow_bind_group_layout = Self::create_shadow_bind_group_layout(device);
 
@@ -217,6 +226,7 @@ impl ModelRenderPass {
             camera,
             &render_shadow_bind_group_layout,
             &render_textures_bind_group_layout,
+            backface_culling,
         )?;
 
         Ok(ModelRenderPass {
@@ -225,6 +235,7 @@ impl ModelRenderPass {
             textures_bind_group_layout: render_textures_bind_group_layout,
             shadow_bind_group_layout: Some(render_shadow_bind_group_layout),
             shadow_bind_group: Some(render_shadow_bind_group),
+            backface_culling,
         })
     }
 

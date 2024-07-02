@@ -153,33 +153,70 @@ impl SdfProgram {
 
             Self::end_category(ui);
 
-            let mut map_material = self.settings.settings.map_material > 0;
-            ui.label("Map Material on Voxels and Raymarch");
-            ui.checkbox(&mut map_material, "");
-            ui.end_row();
-            if map_material != (self.settings.settings.map_material > 0) {
-                // Save old state.
-                let old_state = command_stack::State {
-                    parameters: self.parameters.clone(),
-                    settings: self.settings.settings,
-                };
+            if self.parameters.render_mode == RenderMode::Model
+                || self.parameters.render_mode == RenderMode::ModelAndSdf
+            {
+                let mut enable_backface_culling = self.parameters.enable_backface_culling;
+                ui.label("Cull model backfaces");
+                ui.checkbox(&mut enable_backface_culling, "");
+                ui.end_row();
+                if enable_backface_culling != self.parameters.enable_backface_culling {
+                    // Save old state.
+                    let old_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
 
-                self.settings.settings.map_material = if map_material { 1 } else { 0 };
+                    self.parameters.enable_backface_culling = enable_backface_culling;
 
-                // Get new state.
-                let new_state = command_stack::State {
-                    parameters: self.parameters.clone(),
-                    settings: self.settings.settings,
-                };
+                    // Get new state.
+                    let new_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
 
-                // Push with the old and new state.
-                self.command_stack.push(
-                    "Map Material on Voxels and Raymarch",
-                    command_stack::Command {
-                        old_state,
-                        new_state,
-                    },
-                );
+                    // Push with the old and new state.
+                    self.command_stack.push(
+                        "Cull model backfaces",
+                        command_stack::Command {
+                            old_state,
+                            new_state,
+                        },
+                    );
+                }
+            }
+
+            if self.parameters.render_mode == RenderMode::Raymarch
+                || self.parameters.render_mode == RenderMode::Voxels
+            {
+                let mut map_material = self.settings.settings.map_material > 0;
+                ui.label("Map Material on Voxels and Raymarch");
+                ui.checkbox(&mut map_material, "");
+                ui.end_row();
+                if map_material != (self.settings.settings.map_material > 0) {
+                    // Save old state.
+                    let old_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
+
+                    self.settings.settings.map_material = if map_material { 1 } else { 0 };
+
+                    // Get new state.
+                    let new_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
+
+                    // Push with the old and new state.
+                    self.command_stack.push(
+                        "Map Material on Voxels and Raymarch",
+                        command_stack::Command {
+                            old_state,
+                            new_state,
+                        },
+                    );
+                }
             }
 
             Self::end_category(ui);
