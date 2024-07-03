@@ -1058,6 +1058,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ecolor"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2cabe0a45c3736c274bc650ca02ab293eb2ad1a3870f6033590ca7a3ee9963c"
+dependencies = [
+ "emath 0.28.0",
+]
+
+[[package]]
 name = "egui"
 version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1077,6 +1086,18 @@ dependencies = [
  "ahash",
  "epaint 0.27.2",
  "log",
+ "nohash-hasher",
+]
+
+[[package]]
+name = "egui"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9dce16991290ee6395f3780b9b0db15bf0368bce2f31f2e9ba276d26e4b09cda"
+dependencies = [
+ "ahash",
+ "emath 0.28.0",
+ "epaint 0.28.0",
  "nohash-hasher",
 ]
 
@@ -1144,6 +1165,12 @@ checksum = "e4c3a552cfca14630702449d35f41c84a0d15963273771c6059175a803620f3f"
 dependencies = [
  "bytemuck",
 ]
+
+[[package]]
+name = "emath"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "275f98c04af8359eeef56af16dfafd2bc7a65d9c0e5f2f00918057ca90a9fba8"
 
 [[package]]
 name = "endi"
@@ -1221,6 +1248,20 @@ dependencies = [
  "ecolor 0.27.2",
  "emath 0.27.2",
  "log",
+ "nohash-hasher",
+ "parking_lot",
+]
+
+[[package]]
+name = "epaint"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "205d6fcd02317e3e06cb32d28f821dd549b14ab12da6ff283dda57c4ebe4cb45"
+dependencies = [
+ "ab_glyph",
+ "ahash",
+ "ecolor 0.28.0",
+ "emath 0.28.0",
  "nohash-hasher",
  "parking_lot",
 ]
@@ -2181,7 +2222,7 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "easy-gltf",
- "egui 0.27.2",
+ "egui 0.28.0",
  "egui-gizmo",
  "egui-wgpu",
  "egui-winit",
