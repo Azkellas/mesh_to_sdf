@@ -307,7 +307,7 @@ fn sdf_scene(p: vec2<f32>, iso: f32) -> vec3<f32> {
         } else {
             // add lighting only if we hit something.
             let mapped_position = gradient_descent(position, 0.0).xyz;
-            color = mix(vec3(0.5, 0.5, 0.5), get_albedo(mapped_position, 0.0).rgb, f32(vis_uniforms.map_material > 0));
+            color = mix(vec3(0.5, 0.5, 0.5), get_albedo(mapped_position, 0.0), f32(vis_uniforms.map_material > 0));
 
             let light = shadow_camera.eye.xyz;
             let light_dir = normalize(light - position);
@@ -361,7 +361,7 @@ fn sdf_scene(p: vec2<f32>, iso: f32) -> vec3<f32> {
     return color;
 }
 
-fn get_albedo(p: vec3<f32>, iso: f32) -> vec4<f32> {
+fn get_albedo(p: vec3<f32>, iso: f32) -> vec3<f32> {
     let bbox_center = (vis_uniforms.mesh_bounding_box_min.xyz + vis_uniforms.mesh_bounding_box_max.xyz) * 0.5;
     let bbox_size = vis_uniforms.mesh_bounding_box_max.xyz - vis_uniforms.mesh_bounding_box_min.xyz;
     let bbox_min = bbox_center - bbox_size * 0.5;
@@ -389,24 +389,34 @@ fn get_albedo(p: vec3<f32>, iso: f32) -> vec4<f32> {
         vec3(0.0, -1.0, 0.0),
         vec3(0.0, 1.0, 0.0),
     );
-    var best_dot = 0.0;
 
+    var dots = array(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    var total_dots = 0.0;
     // SDF to check visibility.
     for (var i = 0i; i < 6; i = i + 1) {
         let dir = directions[i];
         let dist = sdf_3d(p + offset * dir, dir).w;
         // we check if > epsilon to see if the ray managed to escape the object.
-        // when that's the case we keep the best dot product to make it as parallel to the camera look direction as possible.
-        // this way we can avoid stretching the cubemap too much.
-        // TODO: interpolation between the valid cubemaps.
-        if dist > epsilon && dot(dir, normal) > best_dot {
-            best_dot = dot(dir, normal);
-            layer = i;
+        let dot = dot(dir, normal);
+        if dist > epsilon && dot(dir, normal) > 0.0 {
+            dots[i] = dot;
+            total_dots += dot;
         }
     }
 
-
-    if layer < 0 {
+    var color = vec3(0.0, 0.0, 0.0);
+    if total_dots > 0.0 {
+        for (var layer = 0; layer < 6; layer += 1) {
+            if dots[layer] > 0.0 {
+                var projected = cubemap_viewprojs[layer] * vec4(p, 1.0);
+                projected /= projected.w;
+                var uv = projected.xy * 0.5 + 0.5;
+                uv.y = 1.0 - uv.y;
+                color += dots[layer] / total_dots * textureSample(cubemap, cubemap_sampler, uv, layer).rgb;
+            }
+        }
+    }
+    else {
         // If the raymarch gave no result, we find the least worst projection via the cubemap depthmaps.
         // This avoids not being able to render mesh interiors but gives a less accurate result.
         var min_dist = 1e10;
@@ -421,17 +431,10 @@ fn get_albedo(p: vec3<f32>, iso: f32) -> vec4<f32> {
             if delta < min_dist {
                 layer = i;
                 min_dist = delta;
+                color = textureSample(cubemap, cubemap_sampler, uv, i).rgb;
+
             }
         }
-    }
-
-    var color = vec4(1.0, 0.0, 1.0, 1.0);
-    if layer >= 0 {
-        var projected = cubemap_viewprojs[layer] * vec4(p, 1.0);
-        projected /= projected.w;
-        var uv = projected.xy * 0.5 + 0.5;
-        uv.y = 1.0 - uv.y;
-        color = textureSample(cubemap, cubemap_sampler, uv, layer);
     }
 
     return color;
