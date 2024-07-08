@@ -28,7 +28,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let vertices = vertices
         .iter()
-        .map(|v| [v.position.x, v.position.y, v.position.y])
+        .map(|v| [v.position.x, v.position.y, v.position.z])
         .collect_vec();
 
     let cell_count = [16, 16, 16];
