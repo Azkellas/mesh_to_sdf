@@ -5,8 +5,6 @@ use wgpu::util::DeviceExt;
 use wgpu::Extent3d;
 use winit_input_helper::WinitInputHelper;
 
-use egui_gizmo::GizmoMode;
-
 use crate::camera::*;
 use crate::cubemap::Cubemap;
 use crate::frame_rate::FrameRate;
@@ -66,7 +64,6 @@ impl TryFrom<u32> for RaymarchMode {
 #[derive(Debug, Clone)]
 struct Parameters {
     file_name: Option<String>,
-    gizmo_mode: GizmoMode,
     cell_count: [u32; 3],
     render_mode: RenderMode,
     sdf_sign_method: mesh_to_sdf::SignMethod,
@@ -280,7 +277,6 @@ impl SdfProgram {
 
         let parameters = Parameters {
             file_name: None,
-            gizmo_mode: GizmoMode::Translate,
             cell_count: [16, 16, 16],
             render_mode: RenderMode::Sdf,
             sdf_sign_method: mesh_to_sdf::SignMethod::default(),
