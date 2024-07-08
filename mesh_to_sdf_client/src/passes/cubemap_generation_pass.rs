@@ -6,7 +6,6 @@ use crate::utility::shader_builder::ShaderBuilder;
 
 use crate::pbr::mesh::MeshVertex;
 
-// TODO: this is exactly the same as ModelRenderPass but with no shadow.
 pub struct CubemapGenerationPass {
     pub render_pipeline: wgpu::RenderPipeline,
     pub model_bind_group_layout: wgpu::BindGroupLayout,
@@ -156,7 +155,7 @@ impl CubemapGenerationPass {
     }
 
     pub fn run(
-        &mut self,
+        &self,
         command_encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         depth_view: &wgpu::TextureView,

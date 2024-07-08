@@ -6,6 +6,7 @@
 //! Generates a SDF from a mesh and renders it.
 mod camera;
 mod camera_control;
+mod cubemap;
 mod frame_rate;
 mod gltf;
 mod passes;

@@ -1,4 +1,3 @@
-//TODO: this is the same as draw_model but with no shadowing
 struct ModelUniforms {
     transform: mat4x4<f32>,
 }

@@ -1,3 +1,5 @@
+use wgpu::util::DeviceExt;
+
 use crate::camera_control::CameraLookAt;
 
 #[derive(Debug)]
@@ -106,5 +108,63 @@ impl CameraData {
     pub fn update_resolution(&mut self, resolution: [u32; 2]) {
         self.camera.update_resolution(resolution);
         self.uniform.resolution = resolution;
+    }
+
+    pub fn new(device: &wgpu::Device) -> Self {
+        let camera = Camera {
+            look_at: CameraLookAt {
+                center: glam::Vec3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                longitude: 6.06,
+                latitude: 0.37,
+                distance: 1.66,
+            },
+            aspect: 800.0 / 600.0,
+            fovy: 45.0,
+            znear: 0.1,
+        };
+
+        let camera_uniform = CameraUniform::from_camera(&camera);
+
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(camera_buffer.size()),
+                    },
+                    count: None,
+                }],
+                label: Some("camera_bind_group_layout"),
+            });
+
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+            label: Some("camera_bind_group"),
+        });
+
+        Self {
+            camera,
+            uniform: camera_uniform,
+            buffer: camera_buffer,
+            bind_group: camera_bind_group,
+            bind_group_layout: camera_bind_group_layout,
+        }
     }
 }

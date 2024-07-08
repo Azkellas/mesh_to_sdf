@@ -8,14 +8,13 @@ use winit_input_helper::WinitInputHelper;
 use egui_gizmo::GizmoMode;
 
 use crate::camera::*;
+use crate::cubemap::Cubemap;
 use crate::frame_rate::FrameRate;
 
 use crate::gltf;
 use crate::texture::{self, Texture};
 
 use crate::sdf::Sdf;
-
-use crate::camera_control::CameraLookAt;
 
 mod command_stack;
 mod ui;
@@ -171,11 +170,8 @@ pub struct SdfProgram {
     command_stack: command_stack::CommandStack,
     alert_message: Option<(String, web_time::Instant)>,
 
-    cubemap: Texture,
-    cubemap_depth: Texture,
-    cubemap_uniforms: wgpu::Buffer,
-    cubemap_bind_group: wgpu::BindGroup,
-    cubemap_bind_group_layout: wgpu::BindGroupLayout,
+    cubemap: Cubemap,
+
     sdf_vertices: Vec<[f32; 3]>,
     sdf_indices: Vec<u32>,
 }
@@ -243,7 +239,7 @@ impl SdfProgram {
         let size = surface.get_current_texture().unwrap().texture.size();
 
         let depth_map = texture::Texture::create_depth_texture(device, size, "depth_texture");
-        let camera = Self::create_camera(device);
+        let camera = CameraData::new(device);
 
         let settings = SettingsData::new(
             device,
@@ -300,95 +296,7 @@ impl SdfProgram {
             parameters.enable_backface_culling,
         )?;
 
-        let size3d = wgpu::Extent3d {
-            width: 2048,
-            height: 2048,
-            depth_or_array_layers: 6,
-        };
-        let cubemap = Texture::create_render_target(device, size3d, Some("mesh_cubemap"), false);
-        let cubemap_depth = Texture::create_depth_texture(device, size3d, "mesh_cubemap_depth");
-        let cubemap_uniforms = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Cubemap Uniform Buffer"),
-            size: 6 * 16 * std::mem::size_of::<f32>() as u64,
-            mapped_at_creation: false,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let cubemap_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2Array,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                            view_dimension: wgpu::TextureViewDimension::D2Array,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 4,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: wgpu::BufferSize::new(cubemap_uniforms.size()),
-                        },
-                        count: None,
-                    },
-                ],
-                label: Some("cubemap_bind_group_layout"),
-            });
-
-        let cubemap_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &cubemap_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&cubemap.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&cubemap.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&cubemap_depth.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::Sampler(&cubemap_depth.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: cubemap_uniforms.as_entire_binding(),
-                },
-            ],
-            label: Some("cubemap_bind_group"),
-        });
+        let cubemap = Cubemap::new(device, 2048);
 
         let voxels = crate::passes::voxel_render_pass::VoxelRenderPass::new(
             device,
@@ -396,7 +304,7 @@ impl SdfProgram {
             &camera,
             &settings.bind_group_layout,
             &shadow_pass.map,
-            &cubemap_bind_group_layout,
+            cubemap.get_bind_group_layout(),
         )?;
 
         let raymarch = crate::passes::raymarch_pass::RaymarchRenderPass::new(
@@ -405,7 +313,7 @@ impl SdfProgram {
             &camera,
             &settings.bind_group_layout,
             &shadow_pass.map,
-            &cubemap_bind_group_layout,
+            cubemap.get_bind_group_layout(),
         )?;
 
         let cubemap_generation_pass =
@@ -439,10 +347,6 @@ impl SdfProgram {
             command_stack: command_stack::CommandStack::new(20),
             alert_message: None,
             cubemap,
-            cubemap_bind_group,
-            cubemap_bind_group_layout,
-            cubemap_depth,
-            cubemap_uniforms,
             sdf_vertices: vec![],
             sdf_indices: vec![],
         })
@@ -480,7 +384,7 @@ impl SdfProgram {
             swapchain_format,
             &self.camera,
             &self.settings.bind_group_layout,
-            &self.cubemap_bind_group_layout,
+            self.cubemap.get_bind_group_layout(),
         )?;
 
         self.pass.raymarch.update_pipeline(
@@ -488,7 +392,7 @@ impl SdfProgram {
             swapchain_format,
             &self.camera,
             &self.settings.bind_group_layout,
-            &self.cubemap_bind_group_layout,
+            self.cubemap.get_bind_group_layout(),
         )?;
 
         Ok(())
@@ -650,7 +554,7 @@ impl SdfProgram {
                 &self.camera,
                 self.sdf.as_ref().unwrap(),
                 &self.settings,
-                &self.cubemap_bind_group,
+                self.cubemap.get_bind_group(),
             );
 
             queue.submit(Some(command_encoder.finish()));
@@ -667,7 +571,7 @@ impl SdfProgram {
                 &self.camera,
                 self.sdf.as_ref().unwrap(),
                 &self.settings,
-                &self.cubemap_bind_group,
+                self.cubemap.get_bind_group(),
             );
 
             queue.submit(Some(command_encoder.finish()));
@@ -676,64 +580,6 @@ impl SdfProgram {
 
     pub fn get_camera(&mut self) -> Option<&mut crate::camera_control::CameraLookAt> {
         Some(&mut self.camera.camera.look_at)
-    }
-
-    fn create_camera(device: &wgpu::Device) -> CameraData {
-        let camera = Camera {
-            look_at: CameraLookAt {
-                center: glam::Vec3 {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-                longitude: 6.06,
-                latitude: 0.37,
-                distance: 1.66,
-            },
-            aspect: 800.0 / 600.0,
-            fovy: 45.0,
-            znear: 0.1,
-        };
-
-        let camera_uniform = CameraUniform::from_camera(&camera);
-
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[camera_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let camera_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(camera_buffer.size()),
-                    },
-                    count: None,
-                }],
-                label: Some("camera_bind_group_layout"),
-            });
-
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-            label: Some("camera_bind_group"),
-        });
-
-        CameraData {
-            camera,
-            uniform: camera_uniform,
-            buffer: camera_buffer,
-            bind_group: camera_bind_group,
-            bind_group_layout: camera_bind_group_layout,
-        }
     }
 
     fn load_gltf(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Result<()> {
@@ -797,7 +643,18 @@ impl SdfProgram {
                     (xmax - xmin).max(ymax - ymin).max(zmax - zmin) * 2.0;
 
                 self.generate_sdf(device)?;
-                self.generate_cubemap(device, queue)?;
+
+                let Some(model_info) = &self.model_info else {
+                    anyhow::bail!("No model to generate SDF from")
+                };
+
+                self.cubemap.generate(
+                    device,
+                    queue,
+                    model_info.bounding_box,
+                    &self.models,
+                    &self.pass.cube_map,
+                )?;
                 Ok(())
             }
         }
@@ -844,170 +701,6 @@ impl SdfProgram {
         self.last_run_info = Some(LastRunInfo {
             time: start.elapsed().as_secs_f32() * 1000.0,
             size: self.parameters.cell_count,
-        });
-
-        Ok(())
-    }
-
-    fn generate_cubemap(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Result<()> {
-        let size = [2048, 2048];
-
-        let mut camera = Self::create_camera(device);
-
-        let bounding_box = self.model_info.as_ref().unwrap().bounding_box;
-        let bbx = 0.5 * (bounding_box[3] - bounding_box[0]);
-        let bby = 0.5 * (bounding_box[4] - bounding_box[1]);
-        let bbz = 0.5 * (bounding_box[5] - bounding_box[2]);
-        let bb_center = glam::Vec3::new(
-            (bounding_box[0] + bounding_box[3]) * 0.5,
-            (bounding_box[1] + bounding_box[4]) * 0.5,
-            (bounding_box[2] + bounding_box[5]) * 0.5,
-        );
-
-        let mut uniforms = [glam::Mat4::IDENTITY; 6];
-
-        (0..6).for_each(|i| {
-            let (eye, proj, view) = match i {
-                0 => {
-                    // axis +X
-                    let eye = bb_center - bbx * glam::Vec3::X;
-                    (
-                        eye,
-                        glam::Mat4::orthographic_rh(-bbz, bbz, -bby, bby, 0.0, 2.0 * bbx),
-                        glam::Mat4::look_at_rh(eye, bb_center, glam::Vec3::Y),
-                    )
-                }
-                1 => {
-                    // axis -x
-                    let eye = bb_center + bbx * glam::Vec3::X;
-                    (
-                        eye,
-                        glam::Mat4::orthographic_rh(-bbz, bbz, -bby, bby, 0.0, 2.0 * bbx),
-                        glam::Mat4::look_at_rh(eye, bb_center, glam::Vec3::Y),
-                    )
-                }
-                2 => {
-                    // axis +z
-                    let eye = bb_center + bbz * glam::Vec3::Z;
-                    (
-                        eye,
-                        glam::Mat4::orthographic_rh(-bbx, bbx, -bby, bby, 0.0, 2.0 * bbz),
-                        glam::Mat4::look_at_rh(eye, bb_center, glam::Vec3::Y),
-                    )
-                }
-                3 => {
-                    // axis -z
-                    let eye = bb_center - bbz * glam::Vec3::Z;
-                    (
-                        eye,
-                        glam::Mat4::orthographic_rh(-bbx, bbx, -bby, bby, 0.0, 2.0 * bbz),
-                        glam::Mat4::look_at_rh(eye, bb_center, glam::Vec3::Y),
-                    )
-                }
-                4 => {
-                    // axis +y
-                    let eye = bb_center - bby * glam::Vec3::Y;
-                    (
-                        eye,
-                        glam::Mat4::orthographic_rh(-bbx, bbx, -bbz, bbz, 0.0, 2.0 * bby),
-                        glam::Mat4::look_at_rh(eye, bb_center, glam::Vec3::Z),
-                    )
-                }
-                5 => {
-                    // axis -y
-                    let eye = bb_center + bby * glam::Vec3::Y;
-                    (
-                        eye,
-                        glam::Mat4::orthographic_rh(-bbx, bbx, -bbz, bbz, 0.0, 2.0 * bby),
-                        glam::Mat4::look_at_rh(eye, bb_center, glam::Vec3::Z),
-                    )
-                }
-                _ => unreachable!(),
-            };
-
-            camera.uniform.view_proj = proj * view;
-            camera.uniform.view = view;
-            camera.uniform.proj = proj;
-            camera.uniform.view_inv = view.inverse();
-            camera.uniform.proj_inv = proj.inverse();
-            camera.uniform.eye = eye.extend(1.0);
-            camera.uniform.resolution = size;
-
-            uniforms[i as usize] = camera.uniform.view_proj;
-
-            queue.write_buffer(&camera.buffer, 0, bytemuck::cast_slice(&[camera.uniform]));
-
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("generate_cubemap"),
-            });
-
-            let layer_view = self
-                .cubemap
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor {
-                    dimension: Some(wgpu::TextureViewDimension::D2),
-                    base_array_layer: i,
-                    array_layer_count: Some(1),
-                    ..Default::default()
-                });
-
-            let depth_view = self
-                .cubemap_depth
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor {
-                    dimension: Some(wgpu::TextureViewDimension::D2),
-                    base_array_layer: i,
-                    array_layer_count: Some(1),
-                    ..Default::default()
-                });
-
-            let whole_texture_range = wgpu::ImageSubresourceRange {
-                aspect: wgpu::TextureAspect::All,
-                base_mip_level: 0,
-                mip_level_count: None,
-                base_array_layer: i,
-                array_layer_count: Some(1),
-            };
-
-            encoder.clear_texture(&self.cubemap.texture, &whole_texture_range);
-            encoder.clear_texture(&self.cubemap_depth.texture, &whole_texture_range);
-
-            for model in &self.models {
-                self.pass
-                    .cube_map
-                    .run(&mut encoder, &layer_view, &depth_view, &camera, model);
-            }
-
-            queue.submit(Some(encoder.finish()));
-        });
-
-        queue.write_buffer(&self.cubemap_uniforms, 0, bytemuck::bytes_of(&uniforms));
-
-        self.cubemap_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &self.cubemap_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&self.cubemap.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&self.cubemap.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&self.cubemap_depth.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::Sampler(&self.cubemap_depth.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: self.cubemap_uniforms.as_entire_binding(),
-                },
-            ],
-            label: Some("cubemap_bind_group"),
         });
 
         Ok(())
