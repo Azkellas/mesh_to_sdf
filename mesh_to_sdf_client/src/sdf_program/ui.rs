@@ -153,6 +153,74 @@ impl SdfProgram {
 
             Self::end_category(ui);
 
+            if self.parameters.render_mode == RenderMode::Model
+                || self.parameters.render_mode == RenderMode::ModelAndSdf
+            {
+                let mut enable_backface_culling = self.parameters.enable_backface_culling;
+                ui.label("Cull model backfaces");
+                ui.checkbox(&mut enable_backface_culling, "");
+                ui.end_row();
+                if enable_backface_culling != self.parameters.enable_backface_culling {
+                    // Save old state.
+                    let old_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
+
+                    self.parameters.enable_backface_culling = enable_backface_culling;
+
+                    // Get new state.
+                    let new_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
+
+                    // Push with the old and new state.
+                    self.command_stack.push(
+                        "Cull model backfaces",
+                        command_stack::Command {
+                            old_state,
+                            new_state,
+                        },
+                    );
+                }
+            }
+
+            if self.parameters.render_mode == RenderMode::Raymarch
+                || self.parameters.render_mode == RenderMode::Voxels
+            {
+                let mut map_material = self.settings.settings.map_material > 0;
+                ui.label("Map Material on Voxels and Raymarch");
+                ui.checkbox(&mut map_material, "");
+                ui.end_row();
+                if map_material != (self.settings.settings.map_material > 0) {
+                    // Save old state.
+                    let old_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
+
+                    self.settings.settings.map_material = if map_material { 1 } else { 0 };
+
+                    // Get new state.
+                    let new_state = command_stack::State {
+                        parameters: self.parameters.clone(),
+                        settings: self.settings.settings,
+                    };
+
+                    // Push with the old and new state.
+                    self.command_stack.push(
+                        "Map Material on Voxels and Raymarch",
+                        command_stack::Command {
+                            old_state,
+                            new_state,
+                        },
+                    );
+                }
+            }
+
+            Self::end_category(ui);
+
             if ui.button("Generate").clicked() {
                 #[allow(clippy::collapsible_if)]
                 if self.generate_sdf(device).is_err() {
@@ -277,7 +345,7 @@ impl SdfProgram {
             ui.label("Bounding box max");
             ui.label(format!(
                 "x: {:.2} y: {:.2} z: {:.2}",
-                model_info.bounding_box[3], model_info.bounding_box[4], model_info.bounding_box[4]
+                model_info.bounding_box[3], model_info.bounding_box[4], model_info.bounding_box[5]
             ));
             ui.end_row();
         }
@@ -436,17 +504,17 @@ impl SdfProgram {
             let mut new_value = self.parameters.cell_count;
             ui.add(
                 egui::DragValue::new(&mut new_value[0])
-                    .clamp_range(2..=100)
+                    .range(2..=100)
                     .prefix("x: "),
             );
             ui.add(
                 egui::DragValue::new(&mut new_value[1])
-                    .clamp_range(2..=100)
+                    .range(2..=100)
                     .prefix("y: "),
             );
             ui.add(
                 egui::DragValue::new(&mut new_value[2])
-                    .clamp_range(2..=100)
+                    .range(2..=100)
                     .prefix("z: "),
             );
 
@@ -557,17 +625,17 @@ impl SdfProgram {
 
         {
             ui.label("Bounding Box Extent");
-            let mut new_value = self.parameters.bounding_box_extent;
+            let mut new_value = self.settings.settings.bounding_box_extent;
             ui.add(egui::Slider::new(&mut new_value, 1.0..=3.0));
 
-            if new_value != self.parameters.bounding_box_extent {
+            if new_value != self.settings.settings.bounding_box_extent {
                 // Save old state.
                 let old_state = command_stack::State {
                     parameters: self.parameters.clone(),
                     settings: self.settings.settings,
                 };
 
-                self.parameters.bounding_box_extent = new_value;
+                self.settings.settings.bounding_box_extent = new_value;
 
                 // Get new state.
                 let new_state = command_stack::State {

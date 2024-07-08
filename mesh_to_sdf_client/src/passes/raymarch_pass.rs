@@ -22,6 +22,7 @@ impl RaymarchRenderPass {
         camera: &CameraData,
         settings_bind_group_layout: &wgpu::BindGroupLayout,
         shadow_bind_group_layout: &wgpu::BindGroupLayout,
+        cubemap_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> Result<wgpu::RenderPipeline> {
         let draw_shader = ShaderBuilder::create_module(device, "draw_raymarching.wgsl")?;
 
@@ -33,6 +34,7 @@ impl RaymarchRenderPass {
                     &camera.bind_group_layout,
                     settings_bind_group_layout,
                     shadow_bind_group_layout,
+                    cubemap_bind_group_layout,
                 ],
                 push_constant_ranges: &[],
             });
@@ -118,6 +120,7 @@ impl RaymarchRenderPass {
         view_format: wgpu::TextureFormat,
         camera: &CameraData,
         settings_bind_group_layout: &wgpu::BindGroupLayout,
+        cubemap_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> Result<()> {
         self.render_pipeline = Self::create_pipeline(
             device,
@@ -126,6 +129,7 @@ impl RaymarchRenderPass {
             camera,
             settings_bind_group_layout,
             self.shadow_bind_group_layout.as_ref().unwrap(),
+            cubemap_bind_group_layout,
         )?;
         Ok(())
     }
@@ -195,6 +199,7 @@ impl RaymarchRenderPass {
         camera: &CameraData,
         settings_bind_group_layout: &wgpu::BindGroupLayout,
         shadow_map: &shadow_map::ShadowMap,
+        cubemap_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> Result<Self> {
         let render_shadow_bind_group_layout = Self::create_shadow_bind_group_layout(device);
 
@@ -210,6 +215,7 @@ impl RaymarchRenderPass {
             camera,
             settings_bind_group_layout,
             &render_shadow_bind_group_layout,
+            cubemap_bind_group_layout,
         )?;
 
         Ok(RaymarchRenderPass {
@@ -227,6 +233,7 @@ impl RaymarchRenderPass {
         camera: &CameraData,
         sdf: &Sdf,
         settings: &SettingsData,
+        cubemap_bind_group: &wgpu::BindGroup,
     ) {
         // need to draw it each frame to update depth map.
         command_encoder.push_debug_group("render particles");
@@ -253,6 +260,7 @@ impl RaymarchRenderPass {
             rpass.set_bind_group(1, &camera.bind_group, &[]);
             rpass.set_bind_group(2, &settings.bind_group, &[]);
             rpass.set_bind_group(3, self.shadow_bind_group.as_ref().unwrap(), &[]);
+            rpass.set_bind_group(4, cubemap_bind_group, &[]);
             rpass.draw(0..3, 0..1);
         }
         command_encoder.pop_debug_group();

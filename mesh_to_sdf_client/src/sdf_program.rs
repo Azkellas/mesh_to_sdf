@@ -8,14 +8,13 @@ use winit_input_helper::WinitInputHelper;
 use egui_gizmo::GizmoMode;
 
 use crate::camera::*;
+use crate::cubemap::Cubemap;
 use crate::frame_rate::FrameRate;
 
 use crate::gltf;
 use crate::texture::{self, Texture};
 
 use crate::sdf::Sdf;
-
-use crate::camera_control::CameraLookAt;
 
 mod command_stack;
 mod ui;
@@ -69,10 +68,10 @@ struct Parameters {
     file_name: Option<String>,
     gizmo_mode: GizmoMode,
     cell_count: [u32; 3],
-    bounding_box_extent: f32,
     render_mode: RenderMode,
     sdf_sign_method: mesh_to_sdf::SignMethod,
     enable_shadows: bool,
+    enable_backface_culling: bool,
 }
 
 #[repr(C)]
@@ -92,7 +91,11 @@ pub struct Settings {
     pub surface_width: f32,
     pub point_size: f32,
     pub raymarch_mode: u32,
-    pub _padding: [f32; 1],
+    pub bounding_box_extent: f32,
+    pub mesh_bbox_min: [f32; 4],
+    pub mesh_bbox_max: [f32; 4],
+    pub map_material: u32, // 0: no, > 0: add material to voxels and raymarch
+    pub _padding: [f32; 3],
 }
 
 pub struct SettingsData {
@@ -149,6 +152,7 @@ struct Passes {
     shadow: crate::passes::shadow_pass::ShadowPass,
     voxels: crate::passes::voxel_render_pass::VoxelRenderPass,
     raymarch: crate::passes::raymarch_pass::RaymarchRenderPass,
+    cube_map: crate::passes::cubemap_generation_pass::CubemapGenerationPass,
 }
 
 pub struct SdfProgram {
@@ -165,6 +169,8 @@ pub struct SdfProgram {
     last_run_info: Option<LastRunInfo>,
     command_stack: command_stack::CommandStack,
     alert_message: Option<(String, web_time::Instant)>,
+
+    cubemap: Cubemap,
 
     sdf_vertices: Vec<[f32; 3]>,
     sdf_indices: Vec<u32>,
@@ -184,8 +190,10 @@ impl SdfProgram {
     }
 
     pub fn required_limits() -> wgpu::Limits {
-        // Stricter than default.
-        wgpu::Limits::downlevel_defaults()
+        wgpu::Limits {
+            max_bind_groups: 8,
+            ..Default::default()
+        }
     }
 
     pub fn required_features() -> wgpu::Features {
@@ -230,8 +238,8 @@ impl SdfProgram {
 
         let size = surface.get_current_texture().unwrap().texture.size();
 
-        let depth_map = texture::Texture::create_depth_texture(device, &size, "depth_texture");
-        let camera = Self::create_camera(device);
+        let depth_map = texture::Texture::create_depth_texture(device, size, "depth_texture");
+        let camera = CameraData::new(device);
 
         let settings = SettingsData::new(
             device,
@@ -249,7 +257,11 @@ impl SdfProgram {
                 surface_width: 0.02,
                 point_size: 0.3,
                 raymarch_mode: RaymarchMode::Trilinear as u32,
-                _padding: [0.0; 1],
+                bounding_box_extent: 1.1,
+                mesh_bbox_min: [0.0, 0.0, 0.0, 0.0],
+                mesh_bbox_max: [0.0, 0.0, 0.0, 0.0],
+                map_material: 1, // map material on voxels and raymarch
+                _padding: [0.0, 0.0, 0.0],
             },
         );
 
@@ -266,12 +278,25 @@ impl SdfProgram {
 
         let shadow_pass = crate::passes::shadow_pass::ShadowPass::new(device, shadow_map)?;
 
+        let parameters = Parameters {
+            file_name: None,
+            gizmo_mode: GizmoMode::Translate,
+            cell_count: [16, 16, 16],
+            render_mode: RenderMode::Sdf,
+            sdf_sign_method: mesh_to_sdf::SignMethod::default(),
+            enable_shadows: false, // deactivating shadows for now.
+            enable_backface_culling: false,
+        };
+
         let model_render_pass = crate::passes::model_render_pass::ModelRenderPass::new(
             device,
             swapchain_format,
             &camera,
             &shadow_pass.map,
+            parameters.enable_backface_culling,
         )?;
+
+        let cubemap = Cubemap::new(device, 2048);
 
         let voxels = crate::passes::voxel_render_pass::VoxelRenderPass::new(
             device,
@@ -279,6 +304,7 @@ impl SdfProgram {
             &camera,
             &settings.bind_group_layout,
             &shadow_pass.map,
+            cubemap.get_bind_group_layout(),
         )?;
 
         let raymarch = crate::passes::raymarch_pass::RaymarchRenderPass::new(
@@ -287,8 +313,15 @@ impl SdfProgram {
             &camera,
             &settings.bind_group_layout,
             &shadow_pass.map,
+            cubemap.get_bind_group_layout(),
         )?;
 
+        let cubemap_generation_pass =
+            crate::passes::cubemap_generation_pass::CubemapGenerationPass::new(
+                device,
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+                &camera,
+            )?;
         let pass = Passes {
             sdf: sdf_pass,
             mip_gen: mip_gen_pass,
@@ -296,16 +329,7 @@ impl SdfProgram {
             shadow: shadow_pass,
             voxels,
             raymarch,
-        };
-
-        let parameters = Parameters {
-            file_name: None,
-            gizmo_mode: GizmoMode::Translate,
-            cell_count: [16, 16, 16],
-            render_mode: RenderMode::Sdf,
-            sdf_sign_method: mesh_to_sdf::SignMethod::default(),
-            enable_shadows: false, // deactivating shadows for now.
-            bounding_box_extent: 1.1,
+            cube_map: cubemap_generation_pass,
         };
 
         Ok(SdfProgram {
@@ -322,7 +346,7 @@ impl SdfProgram {
             last_run_info: None,
             command_stack: command_stack::CommandStack::new(20),
             alert_message: None,
-
+            cubemap,
             sdf_vertices: vec![],
             sdf_indices: vec![],
         })
@@ -341,9 +365,12 @@ impl SdfProgram {
         self.pass.mip_gen.update_pipeline(device)?;
         self.pass.shadow.update_pipeline(device)?;
 
-        self.pass
-            .model
-            .update_pipeline(device, swapchain_format, &self.camera)?;
+        self.pass.model.update_pipeline(
+            device,
+            swapchain_format,
+            &self.camera,
+            self.parameters.enable_backface_culling,
+        )?;
 
         self.pass.sdf.update_pipeline(
             device,
@@ -357,6 +384,7 @@ impl SdfProgram {
             swapchain_format,
             &self.camera,
             &self.settings.bind_group_layout,
+            self.cubemap.get_bind_group_layout(),
         )?;
 
         self.pass.raymarch.update_pipeline(
@@ -364,6 +392,7 @@ impl SdfProgram {
             swapchain_format,
             &self.camera,
             &self.settings.bind_group_layout,
+            self.cubemap.get_bind_group_layout(),
         )?;
 
         Ok(())
@@ -382,11 +411,17 @@ impl SdfProgram {
             depth_or_array_layers: 1,
         };
 
-        self.depth_map = texture::Texture::create_depth_texture(device, &size, "depth_texture");
+        self.depth_map = texture::Texture::create_depth_texture(device, size, "depth_texture");
         self.camera.update_resolution([size.width, size.height]);
     }
 
-    pub fn update(&mut self, queue: &wgpu::Queue) {
+    pub fn update(
+        &mut self,
+        queue: &wgpu::Queue,
+        surface: &wgpu::Surface,
+        device: &wgpu::Device,
+        adapter: &wgpu::Adapter,
+    ) {
         let last_frame_duration = self.last_update.elapsed().as_secs_f32();
         self.frame_rate.update(last_frame_duration);
         self.last_update = web_time::Instant::now();
@@ -411,6 +446,20 @@ impl SdfProgram {
             0,
             bytemuck::cast_slice(&[shadow_map.light.uniform]),
         );
+
+        if self.parameters.enable_backface_culling != self.pass.model.is_culling_backfaces() {
+            let swapchain_capabilities = surface.get_capabilities(adapter);
+            let swapchain_format = swapchain_capabilities.formats[0];
+            self.pass
+                .model
+                .update_pipeline(
+                    device,
+                    swapchain_format,
+                    &self.camera,
+                    self.parameters.enable_backface_culling,
+                )
+                .unwrap();
+        }
     }
 
     pub fn render(&mut self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue) {
@@ -505,6 +554,7 @@ impl SdfProgram {
                 &self.camera,
                 self.sdf.as_ref().unwrap(),
                 &self.settings,
+                self.cubemap.get_bind_group(),
             );
 
             queue.submit(Some(command_encoder.finish()));
@@ -521,6 +571,7 @@ impl SdfProgram {
                 &self.camera,
                 self.sdf.as_ref().unwrap(),
                 &self.settings,
+                self.cubemap.get_bind_group(),
             );
 
             queue.submit(Some(command_encoder.finish()));
@@ -529,64 +580,6 @@ impl SdfProgram {
 
     pub fn get_camera(&mut self) -> Option<&mut crate::camera_control::CameraLookAt> {
         Some(&mut self.camera.camera.look_at)
-    }
-
-    fn create_camera(device: &wgpu::Device) -> CameraData {
-        let camera = Camera {
-            look_at: CameraLookAt {
-                center: glam::Vec3 {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-                longitude: 6.06,
-                latitude: 0.37,
-                distance: 1.66,
-            },
-            aspect: 800.0 / 600.0,
-            fovy: 45.0,
-            znear: 0.1,
-        };
-
-        let camera_uniform = CameraUniform::from_camera(&camera);
-
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[camera_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let camera_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(camera_buffer.size()),
-                    },
-                    count: None,
-                }],
-                label: Some("camera_bind_group_layout"),
-            });
-
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-            label: Some("camera_bind_group"),
-        });
-
-        CameraData {
-            camera,
-            uniform: camera_uniform,
-            buffer: camera_buffer,
-            bind_group: camera_bind_group,
-            bind_group_layout: camera_bind_group_layout,
-        }
     }
 
     fn load_gltf(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Result<()> {
@@ -608,6 +601,7 @@ impl SdfProgram {
                     },
                 );
 
+                // TODO: do it in a single pass.
                 let MinMaxResult::MinMax(xmin, xmax) = vertices.iter().map(|v| v[0]).minmax()
                 else {
                     anyhow::bail!("Bounding box is ill-defined")
@@ -627,6 +621,8 @@ impl SdfProgram {
                     triangle_count: indices.len() / 3,
                     bounding_box: [xmin, ymin, zmin, xmax, ymax, zmax],
                 };
+                self.settings.settings.mesh_bbox_min = [xmin, ymin, zmin, 0.0];
+                self.settings.settings.mesh_bbox_max = [xmax, ymax, zmax, 0.0];
                 self.model_info = Some(model_info);
 
                 self.sdf_vertices = vertices;
@@ -646,7 +642,20 @@ impl SdfProgram {
                 self.camera.camera.look_at.distance =
                     (xmax - xmin).max(ymax - ymin).max(zmax - zmin) * 2.0;
 
-                self.generate_sdf(device)
+                self.generate_sdf(device)?;
+
+                let Some(model_info) = &self.model_info else {
+                    anyhow::bail!("No model to generate SDF from")
+                };
+
+                self.cubemap.generate(
+                    device,
+                    queue,
+                    model_info.bounding_box,
+                    &self.models,
+                    &self.pass.cube_map,
+                )?;
+                Ok(())
             }
         }
     }
@@ -668,12 +677,13 @@ impl SdfProgram {
             (model_info.bounding_box[5] - model_info.bounding_box[2]) / 2.0,
         ];
 
-        let xmin = middle[0] - half_size[0] * self.parameters.bounding_box_extent;
-        let xmax = middle[0] + half_size[0] * self.parameters.bounding_box_extent;
-        let ymin = middle[1] - half_size[1] * self.parameters.bounding_box_extent;
-        let ymax = middle[1] + half_size[1] * self.parameters.bounding_box_extent;
-        let zmin = middle[2] - half_size[2] * self.parameters.bounding_box_extent;
-        let zmax = middle[2] + half_size[2] * self.parameters.bounding_box_extent;
+        let bounding_box_extent = self.settings.settings.bounding_box_extent;
+        let xmin = middle[0] - half_size[0] * bounding_box_extent;
+        let xmax = middle[0] + half_size[0] * bounding_box_extent;
+        let ymin = middle[1] - half_size[1] * bounding_box_extent;
+        let ymax = middle[1] + half_size[1] * bounding_box_extent;
+        let zmin = middle[2] - half_size[2] * bounding_box_extent;
+        let zmax = middle[2] + half_size[2] * bounding_box_extent;
 
         let start_cell = [xmin, ymin, zmin];
         let end_cell = [xmax, ymax, zmax];
