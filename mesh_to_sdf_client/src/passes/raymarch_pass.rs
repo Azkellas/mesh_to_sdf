@@ -56,11 +56,13 @@ impl RaymarchRenderPass {
                     module: &draw_shader,
                     entry_point: "main_vs",
                     buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &draw_shader,
                     entry_point: "main_fs",
                     targets: &[Some(view_format.into())],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
                 }),
                 primitive,
                 depth_stencil: None,

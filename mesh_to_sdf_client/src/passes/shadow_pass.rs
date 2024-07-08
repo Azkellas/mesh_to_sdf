@@ -41,6 +41,7 @@ impl ShadowPass {
                     module: &draw_shader,
                     entry_point: "main_vs",
                     buffers: &[MeshVertex::desc()],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
                 },
                 fragment: None,
                 primitive: wgpu::PrimitiveState::default(),

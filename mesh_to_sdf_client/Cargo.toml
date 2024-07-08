@@ -22,9 +22,9 @@ exclude = ["assets/*", "ARCHITECTURE.md"]
 mesh_to_sdf = { path = "../mesh_to_sdf", version = "0.2.1", features = [
     "glam",
 ] }
-egui = "0.27.2"
+egui = "0.28.1"
 egui-gizmo = "0.16.2"
-wgpu = { version = "0.19.4", default-features = false }
+wgpu = { version = "0.20.1", default-features = false }
 winit_input_helper = "0.16.0"
 bytemuck = { version = "1.16.1", features = ["derive"] }
 web-time = "1.1.0"
@@ -38,8 +38,8 @@ glam = { version = "0.28.0", default-features = true, features = [
 easy-gltf = { version = "1.1.1", default-features = true, features = ["names"] }
 image = "0.25.1"
 pollster = "0.3.0"
-egui-wgpu = "0.27.2"
-egui-winit = "0.27.2"
+egui-wgpu = "0.28.1"
+egui-winit = "0.28.1"
 log = "0.4.22"
 env_logger = "0.11.3"
 cfg-if = "1.0.0"
