@@ -236,17 +236,17 @@ mod tests {
     fn test_get_cell_idx() {
         let min_cell = [0.0, 0.0, 0.0];
         let max_cell = [1.0, 1.0, 1.0];
-        let cell_count = [2, 2, 2];
+        let cell_count = [2, 3, 4];
         let grid = Grid::from_bounding_box(&min_cell, &max_cell, cell_count);
 
         assert_eq!(grid.get_cell_idx(&[0, 0, 0]), 0);
         assert_eq!(grid.get_cell_idx(&[0, 0, 1]), 1);
-        assert_eq!(grid.get_cell_idx(&[0, 1, 0]), 2);
-        assert_eq!(grid.get_cell_idx(&[0, 1, 1]), 3);
-        assert_eq!(grid.get_cell_idx(&[1, 0, 0]), 4);
-        assert_eq!(grid.get_cell_idx(&[1, 0, 1]), 5);
-        assert_eq!(grid.get_cell_idx(&[1, 1, 0]), 6);
-        assert_eq!(grid.get_cell_idx(&[1, 1, 1]), 7);
+        assert_eq!(grid.get_cell_idx(&[0, 1, 0]), 4);
+        assert_eq!(grid.get_cell_idx(&[0, 1, 1]), 5);
+        assert_eq!(grid.get_cell_idx(&[1, 0, 0]), 12);
+        assert_eq!(grid.get_cell_idx(&[1, 0, 1]), 13);
+        assert_eq!(grid.get_cell_idx(&[1, 1, 0]), 16);
+        assert_eq!(grid.get_cell_idx(&[1, 1, 1]), 17);
     }
 
     #[test]
@@ -262,9 +262,9 @@ mod tests {
             assert_eq!(i, idx);
         }
 
-        for x in 0..10 {
+        for x in 0..5 {
             for y in 0..10 {
-                for z in 0..10 {
+                for z in 0..15 {
                     let i = grid.get_cell_idx(&[x, y, z]);
                     let cell = grid.get_cell_integer_coordinates(i);
                     assert_eq!([x, y, z], cell);
