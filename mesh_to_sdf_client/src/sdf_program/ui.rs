@@ -504,17 +504,17 @@ impl SdfProgram {
             let mut new_value = self.parameters.cell_count;
             ui.add(
                 egui::DragValue::new(&mut new_value[0])
-                    .clamp_range(2..=100)
+                    .range(2..=100)
                     .prefix("x: "),
             );
             ui.add(
                 egui::DragValue::new(&mut new_value[1])
-                    .clamp_range(2..=100)
+                    .range(2..=100)
                     .prefix("y: "),
             );
             ui.add(
                 egui::DragValue::new(&mut new_value[2])
-                    .clamp_range(2..=100)
+                    .range(2..=100)
                     .prefix("z: "),
             );
 
