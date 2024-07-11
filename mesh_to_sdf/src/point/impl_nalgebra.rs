@@ -1,6 +1,9 @@
 use super::Point;
 
 impl Point for nalgebra::Point3<f32> {
+    #[cfg(feature = "serde")]
+    type Serde = Self;
+
     /// Create a new point.
     fn new(x: f32, y: f32, z: f32) -> Self {
         nalgebra::Point3::new(x, y, z)
@@ -23,6 +26,9 @@ impl Point for nalgebra::Point3<f32> {
 }
 
 impl Point for nalgebra::Vector3<f32> {
+    #[cfg(feature = "serde")]
+    type Serde = Self;
+
     /// Create a new point.
     fn new(x: f32, y: f32, z: f32) -> Self {
         nalgebra::Vector3::new(x, y, z)

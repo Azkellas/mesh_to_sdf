@@ -100,6 +100,13 @@
 //!
 //! ---
 //!
+//! #### Serialization
+//!
+//! If you want to serialize and deserialize signed distance fields, you need to enable the `serde` feature.
+//! This features also provides helpers to save and load signed distance fields to and from files via `save_to_file` and `read_from_file`.
+//!
+//! ---
+//!
 //! #### Benchmarks
 //!
 //! [`generate_grid_sdf`] is much faster than [`generate_sdf`] and should be used whenever possible.
@@ -116,8 +123,14 @@ mod geo;
 mod grid;
 mod point;
 
+#[cfg(feature = "serde")]
+mod serde;
+
 pub use grid::{Grid, SnapResult};
 pub use point::Point;
+
+#[cfg(feature = "serde")]
+pub use serde::*;
 
 /// Mesh Topology: how indices are stored.
 pub enum Topology<'a, I>
