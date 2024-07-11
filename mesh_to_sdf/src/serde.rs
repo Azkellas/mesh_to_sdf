@@ -3,6 +3,41 @@ use std::path::Path;
 use super::*;
 use ::serde::{de::DeserializeOwned, Deserialize, Serialize};
 
+// ----------------------------------------------------------------------------
+// Serde Error type
+
+/// Error type for serialization and deserialization.
+#[derive(Debug)]
+pub enum SerdeError {
+    /// Failed to deserialize the data via rmp-serde.
+    SerializationFailed,
+    /// Failed to deserialize or deserialize the data via rmp-serde.
+    DeserializationFailed,
+    /// Failed to read or write the file.
+    IoError(std::io::Error),
+}
+
+impl From<std::io::Error> for SerdeError {
+    fn from(e: std::io::Error) -> Self {
+        SerdeError::IoError(e)
+    }
+}
+
+impl From<rmp_serde::encode::Error> for SerdeError {
+    fn from(_: rmp_serde::encode::Error) -> Self {
+        SerdeError::SerializationFailed
+    }
+}
+
+impl From<rmp_serde::decode::Error> for SerdeError {
+    fn from(_: rmp_serde::decode::Error) -> Self {
+        SerdeError::DeserializationFailed
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Serialization structs
+
 /// Serialize signed distance fields struct.
 #[derive(Serialize)]
 #[serde(bound = "V: Serialize + DeserializeOwned")]
@@ -35,10 +70,16 @@ pub struct SerializeGrid<'a, V: Point> {
     pub distances: &'a [f32],
 }
 
-/// Serialize a signed distance fields struct to a byte array.
-fn serialize<V: Point + Serialize + DeserializeOwned>(sdf: &SerializeSdf<V>) -> Vec<u8> {
-    rmp_serde::to_vec(sdf).unwrap()
+/// Version of the serialization format.
+/// This is used to ensure backward compatibility when deserializing.
+#[derive(Serialize)]
+#[serde(bound = "V: Serialize + DeserializeOwned")]
+enum SerializeVersion<'a, V: Point> {
+    V1(&'a SerializeSdf<'a, V>),
 }
+
+// ----------------------------------------------------------------------------
+// Deserialization structs
 
 /// Deserialize signed distance fields struct.
 #[derive(Deserialize)]
@@ -72,9 +113,33 @@ pub struct DeserializeGrid<V: Point> {
     pub distances: Vec<f32>,
 }
 
+/// Version of the deserialization format.
+/// This is used to ensure backward compatibility when deserializing.
+#[derive(Deserialize)]
+#[serde(bound = "V: Serialize + DeserializeOwned")]
+enum DeserializeVersion<V: Point> {
+    V1(DeserializeSdf<V>),
+}
+
+// ----------------------------------------------------------------------------
+// Functions
+
+/// Serialize a signed distance fields struct to a byte array.
+fn serialize<V: Point + Serialize + DeserializeOwned>(
+    sdf: &SerializeSdf<V>,
+) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    // Serialize using the latest version
+    rmp_serde::to_vec(&SerializeVersion::V1(sdf))
+}
+
 /// Deserialize a byte array to a signed distance fields struct.
-fn deserialize<V: Point + Serialize + DeserializeOwned>(data: &[u8]) -> DeserializeSdf<V> {
-    rmp_serde::from_slice(data).unwrap()
+fn deserialize<V: Point + Serialize + DeserializeOwned>(
+    data: &[u8],
+) -> Result<DeserializeSdf<V>, SerdeError> {
+    let versioned_sdf: DeserializeVersion<V> = rmp_serde::from_slice(data)?;
+    Ok(match versioned_sdf {
+        DeserializeVersion::V1(sdf) => sdf,
+    })
 }
 
 /// Save a signed distance fields struct to a file.
@@ -93,8 +158,9 @@ fn deserialize<V: Point + Serialize + DeserializeOwned>(data: &[u8]) -> Deserial
 pub fn save_to_file<V: Point + Serialize + DeserializeOwned, P: AsRef<Path>>(
     sdf: &SerializeSdf<V>,
     path: P,
-) -> Result<(), std::io::Error> {
-    std::fs::write(path, serialize(sdf))
+) -> Result<(), SerdeError> {
+    std::fs::write(path, serialize(sdf)?)?;
+    Ok(())
 }
 
 /// Read a signed distance fields struct from a file.
@@ -115,9 +181,12 @@ pub fn save_to_file<V: Point + Serialize + DeserializeOwned, P: AsRef<Path>>(
 /// ```
 pub fn read_from_file<V: Point + Serialize + DeserializeOwned, P: AsRef<Path>>(
     path: P,
-) -> Result<DeserializeSdf<V>, std::io::Error> {
-    Ok(deserialize(&std::fs::read(path)?))
+) -> Result<DeserializeSdf<V>, SerdeError> {
+    Ok(deserialize(&std::fs::read(path)?)?)
 }
+
+// ----------------------------------------------------------------------------
+// Tests
 
 #[cfg(test)]
 mod tests {
@@ -126,7 +195,7 @@ mod tests {
     use tempfile::*;
 
     #[test]
-    fn test_serde() {
+    fn test_serde() -> Result<(), SerdeError> {
         let queries = [
             cgmath::Vector3::new(1., 2., 3.),
             cgmath::Vector3::new(6., 5., 4.),
@@ -137,8 +206,8 @@ mod tests {
             distances: &distances,
         });
 
-        let data = serialize(&ser);
-        let de: DeserializeSdf<cgmath::Vector3<f32>> = deserialize(&data);
+        let data = serialize(&ser)?;
+        let de: DeserializeSdf<cgmath::Vector3<f32>> = deserialize(&data)?;
 
         match (&ser, &de) {
             (SerializeSdf::Generic(ser), DeserializeSdf::Generic(de)) => {
@@ -147,10 +216,12 @@ mod tests {
             }
             _ => panic!("Mismatch"),
         }
+
+        Ok(())
     }
 
     #[test]
-    fn test_serde_grid() {
+    fn test_serde_grid() -> Result<(), SerdeError> {
         let grid = Grid::new([1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7, 8, 9]);
         let distances = (0..grid.get_total_cell_count())
             .map(|i| i as f32)
@@ -161,8 +232,8 @@ mod tests {
             distances: &distances,
         });
 
-        let data = serialize(&ser);
-        let de: DeserializeSdf<[f32; 3]> = deserialize(&data);
+        let data = serialize(&ser)?;
+        let de: DeserializeSdf<[f32; 3]> = deserialize(&data)?;
 
         match (&ser, &de) {
             (SerializeSdf::Grid(ser), DeserializeSdf::Grid(de)) => {
@@ -171,10 +242,12 @@ mod tests {
             }
             _ => panic!("Mismatch"),
         }
+
+        Ok(())
     }
 
     #[test]
-    fn test_serde_file() -> std::io::Result<()> {
+    fn test_serde_file() -> Result<(), SerdeError> {
         let dir = tempdir()?;
         let file_path = dir.path().join("sdf.bin");
 
@@ -195,6 +268,68 @@ mod tests {
         match (&ser, &de) {
             (SerializeSdf::Generic(ser), DeserializeSdf::Generic(de)) => {
                 assert_eq!(ser.query_points, &de.query_points);
+                assert_eq!(ser.distances, de.distances);
+            }
+            _ => panic!("Mismatch"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_backward_compatibility_serde_generic_v1() -> Result<(), SerdeError> {
+        let queries = [
+            cgmath::Vector3::new(1., 2., 3.),
+            cgmath::Vector3::new(6., 5., 4.),
+        ];
+        let distances = [1.0, 3.0];
+        let ser = SerializeSdf::Generic(SerializeGeneric {
+            query_points: &queries,
+            distances: &distances,
+        });
+
+        let path = "tests/sdf_generic_v1.bin";
+
+        // This was done with the version V1 of the serialization format
+        // save_to_file(&ser, path);
+
+        // Now we make sure we can read it with the current version
+        let de: DeserializeSdf<cgmath::Vector3<f32>> = read_from_file(path)?;
+
+        match (&ser, &de) {
+            (SerializeSdf::Generic(ser), DeserializeSdf::Generic(de)) => {
+                assert_eq!(ser.query_points, &de.query_points);
+                assert_eq!(ser.distances, de.distances);
+            }
+            _ => panic!("Mismatch"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_backward_compatibility_serde_grid_v1() -> Result<(), SerdeError> {
+        let grid = Grid::new([1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7, 8, 9]);
+        let distances = (0..grid.get_total_cell_count())
+            .map(|i| i as f32)
+            .collect::<Vec<_>>();
+
+        let ser = SerializeSdf::Grid(SerializeGrid {
+            grid: &grid,
+            distances: &distances,
+        });
+
+        let path = "tests/sdf_grid_v1.bin";
+
+        // This was done with the version V1 of the serialization format
+        // save_to_file(&ser, path)?;
+
+        // Now we make sure we can read it with the current version
+        let de: DeserializeSdf<[f32; 3]> = read_from_file(path)?;
+
+        match (&ser, &de) {
+            (SerializeSdf::Grid(ser), DeserializeSdf::Grid(de)) => {
+                assert_eq!(ser.grid, &de.grid);
                 assert_eq!(ser.distances, de.distances);
             }
             _ => panic!("Mismatch"),
