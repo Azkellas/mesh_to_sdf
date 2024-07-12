@@ -471,7 +471,9 @@ where
         .map(|(cell_idx, (triangle, distance))| {
             let cell = grid.get_cell_integer_coordinates(cell_idx);
             State {
-                distance: NotNan::new(distance).unwrap(), // distance is valid.
+                distance: NotNan::new(distance)
+                    .unwrap_or(unsafe { NotNan::new_unchecked(f32::MAX) }),
+
                 triangle,
                 cell,
             }
@@ -525,7 +527,8 @@ where
 
                 distances[neighbour_cell_idx] = distance;
                 let state = State {
-                    distance: NotNan::new(distance).unwrap(), // TODO: handle error
+                    distance: NotNan::new(distance)
+                        .unwrap_or(unsafe { NotNan::new_unchecked(f32::MAX) }),
                     triangle,
                     cell: neighbour_cell,
                 };

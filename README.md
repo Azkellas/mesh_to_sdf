@@ -155,10 +155,11 @@ Credits:
 This project is still in its early stages. Here is a list of things that are planned for (near) the future:
 - [x] [lib] Robust inside/outside checking with raycast
 - [x] [lib] Implement `Point` for common libraries (`cgmath`, `nalgebra`, `mint`, ...)
-- [ ] [lib] Optimize `mesh_to_sdf` with a bvh
+- [x] [lib] Optimize `mesh_to_sdf` with a bvh
 - [ ] [lib] Optimize `mesh_to_sdf` by computing on the gpu
 - [ ] [lib] Load/Save vf files
-- [ ] [lib] General optimizations
+- [x] [lib] Serialize/Deserialize with `serde` and save/load to file
+- [x] [lib] General optimizations
 - [x] [lib] Tests/Benchmarks/Examples
 - [ ] [lib] Methods to sample the surface
 - [x] [client] Display meshes
