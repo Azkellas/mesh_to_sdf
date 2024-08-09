@@ -1,6 +1,9 @@
 use super::Point;
 
 impl Point for mint::Point3<f32> {
+    #[cfg(feature = "serde")]
+    type Serde = Self;
+
     /// Create a new point.
     fn new(x: f32, y: f32, z: f32) -> Self {
         mint::Point3 { x, y, z }
@@ -23,6 +26,9 @@ impl Point for mint::Point3<f32> {
 }
 
 impl Point for mint::Vector3<f32> {
+    #[cfg(feature = "serde")]
+    type Serde = Self;
+
     /// Create a new point.
     fn new(x: f32, y: f32, z: f32) -> Self {
         mint::Vector3 { x, y, z }

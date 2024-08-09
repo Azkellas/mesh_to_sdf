@@ -43,7 +43,6 @@ pub struct CameraUniform {
     pub proj_inv: glam::Mat4,
     pub eye: glam::Vec4,
     pub resolution: [u32; 2],
-    // TODO: already in CameraData, redondant
     pub znear: f32,
     _padding: f32,
 }

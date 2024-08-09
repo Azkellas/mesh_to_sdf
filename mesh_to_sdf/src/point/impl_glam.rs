@@ -1,6 +1,9 @@
 use super::Point;
 
 impl Point for glam::Vec3 {
+    #[cfg(feature = "serde")]
+    type Serde = Self;
+
     /// Create a new point.
     fn new(x: f32, y: f32, z: f32) -> Self {
         glam::Vec3::new(x, y, z)

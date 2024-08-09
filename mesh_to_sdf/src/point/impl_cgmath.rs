@@ -3,6 +3,9 @@ use cgmath::{ElementWise, InnerSpace, MetricSpace};
 use super::Point;
 
 impl Point for cgmath::Vector3<f32> {
+    #[cfg(feature = "serde")]
+    type Serde = Self;
+
     /// Create a new point.
     fn new(x: f32, y: f32, z: f32) -> Self {
         cgmath::Vector3::new(x, y, z)

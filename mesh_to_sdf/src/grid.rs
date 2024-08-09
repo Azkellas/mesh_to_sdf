@@ -1,3 +1,6 @@
+#[cfg(feature = "serde")]
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+
 use crate::point::Point;
 
 /// Result of snapping a point to the grid.
@@ -21,7 +24,9 @@ pub enum SnapResult {
 ///                 Note that if you want to sample x in 0 1 2 .. 10, you need 11 cells in this direction and not 10.
 /// - `cell_size` can be different in each direction and even negative.
 /// - `cell_count` can be different in each direction
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(bound = "V: Serialize + DeserializeOwned"))]
 pub struct Grid<V: Point> {
     /// The center of the first cell.
     first_cell: V,

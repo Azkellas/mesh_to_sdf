@@ -212,7 +212,6 @@ impl VoxelRenderPass {
         shadow_map: &shadow_map::ShadowMap,
         cubemap_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> Result<Self> {
-        // TODO: copy pasted from model_render_pass, maybe we can merge the two.
         let voxel_bind_group_layout = Self::get_bind_group_layout(device);
 
         let render_shadow_bind_group_layout = Self::create_shadow_bind_group_layout(device);

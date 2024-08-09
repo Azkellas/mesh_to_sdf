@@ -57,16 +57,16 @@ impl CameraLookAt {
 
             if input.mouse_held(translation_button) {
                 // Translate the center.
-                // TODO: this is not exact, we should move along the camera plane.
-                // this is especially visible when near nadir or zenith.
-                let dir = glam::Vec2::from_angle(self.longitude);
-                let translation_dir = dir.perp();
+                let dir = self.get_view_direction();
+                let up = glam::Vec3::Y;
+                let translation_dir = dir.cross(up).normalize();
+                let up = translation_dir.cross(dir).normalize();
+
                 // The further away we are, the faster we move.
                 let translation_weight = mouse_delta.0 / window_size[0] * self.distance;
 
-                self.center.x += translation_dir.x * translation_weight;
-                self.center.z += translation_dir.y * translation_weight;
-                self.center.y += mouse_delta.1 / window_size[1] * self.distance;
+                self.center += translation_dir * translation_weight;
+                self.center += up * mouse_delta.1 / window_size[1] * self.distance;
 
                 captured = true;
             }
@@ -82,6 +82,16 @@ impl CameraLookAt {
         }
 
         captured
+    }
+
+    /// Get the view direction.
+    pub fn get_view_direction(&self) -> glam::Vec3 {
+        let dir = glam::Vec3::new(
+            self.longitude.cos() * self.latitude.cos(),
+            self.latitude.sin(),
+            self.longitude.sin() * self.latitude.cos(),
+        );
+        dir.normalize()
     }
 
     /// Get the view matrix.

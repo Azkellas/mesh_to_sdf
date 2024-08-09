@@ -1,3 +1,6 @@
+#[cfg(feature = "serde")]
+use serde::{de::DeserializeOwned, Serialize};
+
 mod impl_array;
 
 #[cfg(feature = "cgmath")]
@@ -16,6 +19,27 @@ mod impl_nalgebra;
 /// the other methods are provided for optimization purposes,
 /// relying on the client math library to provide optimized implementations when possible.
 pub trait Point: Sized + Copy + Sync + Send {
+    /// If the `serde` feature is enabled, the Point should be serializable and deserializable.
+    /// You should set Serde to Self:
+    /// ```ignore
+    /// use mesh_to_sdf::Point;
+    /// #[derive(Serialize, Deserialize)]
+    /// struct MyPoint {
+    ///     x: f32,
+    ///     y: f32,
+    ///     z: f32,
+    /// }
+    ///
+    /// impl Point for MyPoint {
+    ///     #[cfg(feature = "serde")]
+    ///    type Serde = Self;
+    ///
+    ///    // ...
+    /// }
+    /// ```
+    #[cfg(feature = "serde")]
+    type Serde: Serialize + DeserializeOwned;
+
     /// Create a new point.
     fn new(x: f32, y: f32, z: f32) -> Self;
 
