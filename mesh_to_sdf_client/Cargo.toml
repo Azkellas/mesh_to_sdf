@@ -53,7 +53,7 @@ notify = "6.1.1"
 [target.'cfg(target_family = "wasm")'.dependencies]
 # Embed shaders in wasm even in debug mode.
 rust-embed = { version = "8.4.0", features = ["debug-embed"] }
-wasm-bindgen-futures = "0.4.42"
+wasm-bindgen-futures = "0.4.43"
 web-sys = "0.3.70"
 console_error_panic_hook = "0.1.7"
 console_log = "1.0.0"
