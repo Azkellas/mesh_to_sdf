@@ -543,6 +543,9 @@ async fn run(
                 // Present the frame.
                 context.queue.submit(Some(encoder.finish()));
                 frame.present();
+
+                // Handle the egui -> winit integration.
+                egui_state.handle_platform_output(&window_loop.window, output.platform_output);
             }
         },
     );
