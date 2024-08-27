@@ -26,7 +26,7 @@ egui = "0.28.1"
 egui-gizmo = "0.16.2"
 wgpu = { version = "0.20.1", default-features = false }
 winit_input_helper = "0.16.0"
-bytemuck = { version = "1.17.0", features = ["derive"] }
+bytemuck = { version = "1.17.1", features = ["derive"] }
 web-time = "1.1.0"
 itertools = "0.13.0"
 anyhow = "1.0.86"
