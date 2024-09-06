@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+use hashbrown::HashMap;
 use itertools::{Itertools, MinMaxResult};
 use wgpu::util::DeviceExt;
 use wgpu::Extent3d;
@@ -12,6 +13,8 @@ use crate::cubemap::Cubemap;
 use crate::frame_rate::FrameRate;
 
 use crate::gltf;
+use crate::pbr::model::Model;
+use crate::pbr::model_instance::ModelInstance;
 use crate::texture::{self, Texture};
 
 use crate::sdf::Sdf;
@@ -164,7 +167,8 @@ pub struct SdfProgram {
     camera: CameraData,
     depth_map: Texture,
     sdf: Option<Sdf>,
-    models: Vec<crate::pbr::model::Model>,
+    models: HashMap<usize, Model>,
+    model_instances: Vec<ModelInstance>,
     model_info: Option<ModelInfo>,
     last_run_info: Option<LastRunInfo>,
     command_stack: command_stack::CommandStack,
@@ -172,7 +176,7 @@ pub struct SdfProgram {
 
     cubemap: Cubemap,
 
-    sdf_vertices: Vec<[f32; 3]>,
+    sdf_vertices: Vec<glam::Vec3>,
     sdf_indices: Vec<u32>,
 }
 
@@ -341,7 +345,8 @@ impl SdfProgram {
             depth_map,
             parameters,
             sdf: None,
-            models: vec![],
+            models: HashMap::new(),
+            model_instances: vec![],
             model_info: None,
             last_run_info: None,
             command_stack: command_stack::CommandStack::new(20),
@@ -489,8 +494,11 @@ impl SdfProgram {
 
             command_encoder.push_debug_group("render models shadow");
             {
-                for model in &self.models {
-                    self.pass.shadow.run(&mut command_encoder, model);
+                for model_instance in &self.model_instances {
+                    let model = &self.models[&model_instance.model_id];
+                    self.pass
+                        .shadow
+                        .run(&mut command_encoder, model, model_instance);
                 }
             }
             command_encoder.pop_debug_group();
@@ -507,13 +515,16 @@ impl SdfProgram {
 
             command_encoder.push_debug_group("render models");
             {
-                for model in &self.models {
+                for model_instance in &self.model_instances {
+                    let model = &self.models[&model_instance.model_id];
+
                     self.pass.model.run(
                         &mut command_encoder,
                         view,
                         &self.depth_map,
                         &self.camera,
                         model,
+                        model_instance,
                     );
                 }
             }
@@ -588,30 +599,33 @@ impl SdfProgram {
             Some(ref path) => {
                 // a gltf scene can contain multiple models.
                 // we merge them in a single sdf.
-                self.models = gltf::load_scene(device, queue, path)?;
+                let (models, instances) = gltf::load_scene(device, queue, path)?;
+                self.models = models;
+                self.model_instances = instances;
 
-                let (vertices, indices) = self.models.iter().fold(
+                let (vertices, indices) = self.model_instances.iter().fold(
                     (vec![], vec![]),
-                    |(mut vertices, mut indices), model| {
+                    |(mut vertices, mut indices), model_instance| {
+                        let model = &self.models[&model_instance.model_id];
+                        let transform = model_instance.transform;
+                        vertices.extend(model.mesh.vertices.iter().map(|v| {
+                            transform.transform_point3(glam::Vec3::from_array(v.position))
+                        }));
                         // we need to offset the indices by the number of vertices we already have.
                         let len = vertices.len();
-                        vertices.extend(model.mesh.vertices.iter().map(|v| v.position));
                         indices.extend(model.mesh.indices.iter().map(|i| *i + len as u32));
                         (vertices, indices)
                     },
                 );
 
                 // TODO: do it in a single pass.
-                let MinMaxResult::MinMax(xmin, xmax) = vertices.iter().map(|v| v[0]).minmax()
-                else {
+                let MinMaxResult::MinMax(xmin, xmax) = vertices.iter().map(|v| v.x).minmax() else {
                     anyhow::bail!("Bounding box is ill-defined")
                 };
-                let MinMaxResult::MinMax(ymin, ymax) = vertices.iter().map(|v| v[1]).minmax()
-                else {
+                let MinMaxResult::MinMax(ymin, ymax) = vertices.iter().map(|v| v.y).minmax() else {
                     anyhow::bail!("Bounding box is ill-defined")
                 };
-                let MinMaxResult::MinMax(zmin, zmax) = vertices.iter().map(|v| v[2]).minmax()
-                else {
+                let MinMaxResult::MinMax(zmin, zmax) = vertices.iter().map(|v| v.z).minmax() else {
                     anyhow::bail!("Bounding box is ill-defined")
                 };
 
@@ -653,6 +667,7 @@ impl SdfProgram {
                     queue,
                     model_info.bounding_box,
                     &self.models,
+                    &self.model_instances,
                     &self.pass.cube_map,
                 )?;
                 Ok(())
@@ -685,8 +700,8 @@ impl SdfProgram {
         let zmin = middle[2] - half_size[2] * bounding_box_extent;
         let zmax = middle[2] + half_size[2] * bounding_box_extent;
 
-        let start_cell = [xmin, ymin, zmin];
-        let end_cell = [xmax, ymax, zmax];
+        let start_cell = glam::Vec3::new(xmin, ymin, zmin);
+        let end_cell = glam::Vec3::new(xmax, ymax, zmax);
 
         self.sdf = Some(Sdf::new(
             device,

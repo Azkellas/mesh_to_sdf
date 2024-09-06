@@ -1,10 +1,14 @@
 # Changelog
 
-## [Unreleased]
+## [0.3.0]
 
 ### Added
 
 - Voxel and Raymarch visualizations now map the material of the mesh onto the new geometry.
+
+### Changed
+
+- Parallelize loading of the mesh.
 
 ## [0.2.1] - 2024-02-18
 

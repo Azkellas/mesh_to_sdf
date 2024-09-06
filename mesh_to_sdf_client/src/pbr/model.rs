@@ -1,7 +1,9 @@
 use itertools::Itertools;
-use wgpu::util::DeviceExt;
 
-use crate::texture::Texture;
+use crate::{
+    gltf::{GltfModel, Material},
+    texture::Texture,
+};
 
 use super::mesh::{Mesh, MeshVertex};
 use crate::passes::model_render_pass::ModelRenderPass;
@@ -14,16 +16,16 @@ pub struct Model {
     // TODO Material struct.
     pub albedo: Texture,
 
-    pub transform: glam::Mat4,
-    pub transform_buffer: wgpu::Buffer,
-    pub transform_bind_group: wgpu::BindGroup,
-    pub transform_bind_group_layout: wgpu::BindGroupLayout,
-
     pub textures_bind_group: wgpu::BindGroup,
 }
 
 impl Model {
-    pub fn from_gtlf(device: &wgpu::Device, queue: &wgpu::Queue, model: &easy_gltf::Model) -> Self {
+    pub fn from_gtlf(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        model: &GltfModel,
+        material: Option<&Material>,
+    ) -> Self {
         let indices = model
             .indices()
             .cloned()
@@ -49,12 +51,13 @@ impl Model {
         let albedo = Texture::from_image(
             device,
             queue,
-            model
-                .material()
-                .pbr
-                .base_color_texture
-                .as_ref()
-                .map_or(&grey_albedo, |x| x.as_ref()),
+            material.map_or(&grey_albedo, |material| {
+                material
+                    .pbr
+                    .base_color_texture
+                    .as_ref()
+                    .map_or(&grey_albedo, |x| x.as_ref())
+            }),
             Some("albedo"),
         );
 
@@ -75,35 +78,10 @@ impl Model {
             label: Some("Model Bind group"),
         });
 
-        // In easy_gltf, the transform is already applied to the vertices.
-        // This is not an issue with this app since we don't want to move the model (yet).
-        let transform = glam::Mat4::IDENTITY;
-
-        let transform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Transform Buffer"),
-            contents: bytemuck::cast_slice(&[transform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let model_bind_group_layout = ModelRenderPass::create_model_bind_group_layout(device);
-
-        let transform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &model_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: transform_buffer.as_entire_binding(),
-            }],
-            label: Some("Model::Transform bind group"),
-        });
-
         Self {
             name: model.mesh_name().map(|x| x.to_owned()),
             mesh,
             albedo,
-            transform,
-            transform_buffer,
-            transform_bind_group,
-            transform_bind_group_layout: model_bind_group_layout,
             textures_bind_group,
         }
     }

@@ -1,7 +1,10 @@
 use anyhow::Result;
+use hashbrown::HashMap;
 
 use crate::{
-    camera::CameraData, passes::cubemap_generation_pass::CubemapGenerationPass, pbr::model::Model,
+    camera::CameraData,
+    passes::cubemap_generation_pass::CubemapGenerationPass,
+    pbr::{model::Model, model_instance::ModelInstance},
     texture::Texture,
 };
 
@@ -158,7 +161,8 @@ impl Cubemap {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         bounding_box: [f32; 6],
-        models: &[Model],
+        models: &HashMap<usize, Model>,
+        model_instances: &[ModelInstance],
         cubemap_pass: &CubemapGenerationPass,
     ) -> Result<()> {
         let size = [2048, 2048];
@@ -287,8 +291,16 @@ impl Cubemap {
             encoder.clear_texture(&self.depth.texture, &whole_texture_range);
 
             // Run the cubemap pass for each model for the current layer.
-            for model in models {
-                cubemap_pass.run(&mut encoder, &layer_view, &depth_view, &camera, model);
+            for model_instance in model_instances {
+                let model = &models[&model_instance.model_id];
+                cubemap_pass.run(
+                    &mut encoder,
+                    &layer_view,
+                    &depth_view,
+                    &camera,
+                    model,
+                    model_instance,
+                );
             }
 
             queue.submit(Some(encoder.finish()));
