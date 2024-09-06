@@ -1,6 +1,8 @@
 use anyhow::Result;
 
 use crate::pbr::mesh::MeshVertex;
+use crate::pbr::model::Model;
+use crate::pbr::model_instance::ModelInstance;
 use crate::texture::Texture;
 use crate::utility::shader_builder::ShaderBuilder;
 
@@ -73,7 +75,8 @@ impl ShadowPass {
     pub fn run(
         &mut self,
         command_encoder: &mut wgpu::CommandEncoder,
-        model: &crate::pbr::model::Model,
+        model: &Model,
+        model_instance: &ModelInstance,
     ) {
         let render_pass_descriptor = wgpu::RenderPassDescriptor {
             label: Some("ShadowPass::run::render_pass_descriptor"),
@@ -92,7 +95,7 @@ impl ShadowPass {
 
         let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
         rpass.set_pipeline(&self.render_pipeline);
-        rpass.set_bind_group(0, &model.transform_bind_group, &[]);
+        rpass.set_bind_group(0, &model_instance.transform_bind_group, &[]);
         rpass.set_bind_group(1, &self.map.light.bind_group, &[]);
         rpass.set_vertex_buffer(0, model.mesh.vertex_buffer.slice(..));
         rpass.set_index_buffer(model.mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);

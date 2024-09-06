@@ -1,6 +1,8 @@
 use anyhow::Result;
 
 use crate::camera::CameraData;
+use crate::pbr::model::Model;
+use crate::pbr::model_instance::ModelInstance;
 use crate::texture::Texture;
 use crate::utility::shader_builder::ShaderBuilder;
 
@@ -160,7 +162,8 @@ impl CubemapGenerationPass {
         view: &wgpu::TextureView,
         depth_view: &wgpu::TextureView,
         camera: &CameraData,
-        model: &crate::pbr::model::Model,
+        model: &Model,
+        model_instance: &ModelInstance,
     ) {
         let render_pass_descriptor = wgpu::RenderPassDescriptor {
             label: Some("ModelRenderPass::run::render_pass_descriptor"),
@@ -187,7 +190,7 @@ impl CubemapGenerationPass {
         // render pass
         let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
         rpass.set_pipeline(&self.render_pipeline);
-        rpass.set_bind_group(0, &model.transform_bind_group, &[]);
+        rpass.set_bind_group(0, &model_instance.transform_bind_group, &[]);
         rpass.set_bind_group(1, &camera.bind_group, &[]);
         rpass.set_bind_group(2, &model.textures_bind_group, &[]);
 

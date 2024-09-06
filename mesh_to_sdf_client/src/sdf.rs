@@ -24,7 +24,7 @@ pub struct Sdf {
     pub ordered_indices: Vec<u32>,
     pub ordered_buffer: wgpu::Buffer,
 
-    pub grid: mesh_to_sdf::Grid<[f32; 3]>,
+    pub grid: mesh_to_sdf::Grid<glam::Vec3>,
     pub iso_limits: (f32, f32),
 
     pub bind_group: wgpu::BindGroup,
@@ -33,10 +33,10 @@ pub struct Sdf {
 impl Sdf {
     pub fn new(
         device: &wgpu::Device,
-        vertices: &[[f32; 3]],
+        vertices: &[glam::Vec3],
         indices: &[u32],
-        start_cell: &[f32; 3],
-        end_cell: &[f32; 3],
+        start_cell: &glam::Vec3,
+        end_cell: &glam::Vec3,
         cell_count: &[u32; 3],
         sign_method: SignMethod,
     ) -> Result<Self> {
