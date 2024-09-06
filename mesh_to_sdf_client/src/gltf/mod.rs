@@ -197,9 +197,14 @@ mod tests {
         };
     }
 
+    fn load_test_file(path: &str) -> Result<(Vec<Scene>, GltfData), gltf::Error> {
+        let path = std::path::Path::new(file!()).join("../../../..").join(path);
+        load(path)
+    }
+
     #[test]
     fn check_cube_glb() {
-        let (scenes, data) = load("tests/cube.glb").unwrap();
+        let (scenes, data) = load_test_file("tests/cube.glb").unwrap();
         assert_eq!(scenes.len(), 1);
         let scene = &scenes[0];
         assert_eq!(scene.cameras.len(), 1);
@@ -209,7 +214,7 @@ mod tests {
 
     #[test]
     fn check_different_meshes() {
-        let (scenes, data) = load("tests/complete.glb").unwrap();
+        let (scenes, data) = load_test_file("tests/complete.glb").unwrap();
         assert_eq!(scenes.len(), 1);
         let scene = &scenes[0];
         for model_id in scene.models.iter() {
@@ -230,12 +235,12 @@ mod tests {
 
     #[test]
     fn check_cube_gltf() {
-        let _ = load("tests/cube_classic.gltf").unwrap();
+        let _ = load_test_file("tests/cube_classic.gltf").unwrap();
     }
 
     #[test]
     fn check_default_texture() {
-        let _ = load("tests/box_sparse.glb").unwrap();
+        let _ = load_test_file("tests/box_sparse.glb").unwrap();
     }
 
     #[test]
@@ -249,7 +254,7 @@ mod tests {
 
     #[test]
     fn check_lights() {
-        let (scenes, _data) = load("tests/cube.glb").unwrap();
+        let (scenes, _data) = load_test_file("tests/cube.glb").unwrap();
         let scene = &scenes[0];
         // TODO: re-enable direction/position checks by computing global transform.
         for light in scene.lights.iter() {
@@ -296,7 +301,7 @@ mod tests {
 
     #[test]
     fn check_model() {
-        let (_scenes, data) = load("tests/cube.glb").unwrap();
+        let (_scenes, data) = load_test_file("tests/cube.glb").unwrap();
         for model in data.models.values() {
             assert!(model.has_normals());
             assert!(model.has_tex_coords());
@@ -310,7 +315,7 @@ mod tests {
 
     #[test]
     fn check_material() {
-        let (_scenes, data) = load("tests/head.glb").unwrap();
+        let (_scenes, data) = load_test_file("tests/head.glb").unwrap();
         for mat in data.materials.values() {
             assert!(mat.pbr.base_color_texture.is_some());
             assert_eq!(mat.pbr.metallic_factor, 0.);
@@ -319,12 +324,12 @@ mod tests {
 
     #[test]
     fn check_invalid_path() {
-        assert!(load("tests/invalid.glb").is_err());
+        assert!(load_test_file("tests/invalid.glb").is_err());
     }
 
     #[test]
     fn check_model_no_material() {
-        let res = load("tests/suzanne.glb");
+        let res = load_test_file("tests/suzanne.glb");
         assert!(res.is_ok());
         let (scenes, data) = res.unwrap();
         assert!(scenes.len() == 1);
@@ -337,7 +342,7 @@ mod tests {
 
     #[test]
     fn check_dragon() {
-        let res = load("tests/dragon.glb");
+        let res = load_test_file("tests/dragon.glb");
         assert!(res.is_err());
     }
 }

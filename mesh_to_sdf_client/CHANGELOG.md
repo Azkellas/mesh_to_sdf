@@ -6,6 +6,10 @@
 
 - Voxel and Raymarch visualizations now map the material of the mesh onto the new geometry.
 
+### Changed
+
+- Parallelize loading of the mesh.
+
 ## [0.2.1] - 2024-02-18
 
 Update `mesh_to_sdf` dependency to `0.2.1` since it had a breaking change.
