@@ -1,7 +1,7 @@
 [package]
 name = "mesh_to_sdf_client"
 authors = ["Etienne Desbois <e.desbois@hotmail.fr>"]
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 homepage = "https://github.com/Azkellas/mesh_to_sdf"
 license = "MIT OR Apache-2.0"
@@ -19,7 +19,7 @@ categories = [
 exclude = ["assets/*", "ARCHITECTURE.md"]
 
 [dependencies]
-mesh_to_sdf = { path = "../mesh_to_sdf", version = "0.2.1", features = [
+mesh_to_sdf = { path = "../mesh_to_sdf", version = "0.3.0", features = [
     "glam",
 ] }
 egui = "0.28.1"
