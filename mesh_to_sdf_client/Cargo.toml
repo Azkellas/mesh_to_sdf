@@ -16,7 +16,7 @@ categories = [
     "data-structures",
 ]
 
-exclude = ["assets/*", "ARCHITECTURE.md"]
+exclude = ["assets/*", "ARCHITECTURE.md", "tests/*"]
 
 [dependencies]
 mesh_to_sdf = { path = "../mesh_to_sdf", version = "0.3.0", features = [
