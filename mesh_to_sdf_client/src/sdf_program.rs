@@ -608,11 +608,11 @@ impl SdfProgram {
                     |(mut vertices, mut indices), model_instance| {
                         let model = &self.models[&model_instance.model_id];
                         let transform = model_instance.transform;
+                        // we need to offset the indices by the number of vertices we already have.
+                        let len = vertices.len();
                         vertices.extend(model.mesh.vertices.iter().map(|v| {
                             transform.transform_point3(glam::Vec3::from_array(v.position))
                         }));
-                        // we need to offset the indices by the number of vertices we already have.
-                        let len = vertices.len();
                         indices.extend(model.mesh.indices.iter().map(|i| *i + len as u32));
                         (vertices, indices)
                     },
