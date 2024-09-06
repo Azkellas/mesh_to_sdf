@@ -34,7 +34,7 @@ This crate provides two entry points:
 - [`generate_grid_sdf`]: computes the signed distance field for the mesh defined by `vertices` and `indices` on a [Grid].
 
 ```rust
-use mesh_to_sdf::{generate_sdf, generate_grid_sdf, SignMethod, Topology, Grid};
+use mesh_to_sdf::{generate_sdf, generate_grid_sdf, SignMethod, AccelerationMethod, Topology, Grid};
 // vertices are [f32; 3], but can be cgmath::Vector3<f32>, glam::Vec3, etc.
 let vertices: Vec<[f32; 3]> = vec![[0.5, 1.5, 0.5], [1., 2., 3.], [1., 3., 7.]];
 let indices: Vec<u32> = vec![0, 1, 2];
@@ -47,8 +47,9 @@ let sdf: Vec<f32> = generate_sdf(
     &vertices,
     Topology::TriangleList(Some(&indices)), // TriangleList as opposed to TriangleStrip
     &query_points,
-    SignMethod::Raycast, // How the sign is computed.
-);                       // Raycast is robust but requires the mesh to be watertight.
+    AccelerationMethod::Bvh,    // Use bvh to accelerate queries.
+    SignMethod::Raycast,        // How the sign is computed.
+);                              // Raycast is robust but requires the mesh to be watertight.
 
 for point in query_points.iter().zip(sdf.iter()) {
     // distance is positive outside the mesh and negative inside.
@@ -157,7 +158,6 @@ This project is still in its early stages. Here is a list of things that are pla
 - [x] [lib] Implement `Point` for common libraries (`cgmath`, `nalgebra`, `mint`, ...)
 - [x] [lib] Optimize `mesh_to_sdf` with a bvh
 - [ ] [lib] Optimize `mesh_to_sdf` by computing on the gpu
-- [ ] [lib] Load/Save vf files
 - [x] [lib] Serialize/Deserialize with `serde` and save/load to file
 - [x] [lib] General optimizations
 - [x] [lib] Tests/Benchmarks/Examples

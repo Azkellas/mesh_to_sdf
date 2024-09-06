@@ -182,7 +182,7 @@ pub fn save_to_file<V: Point + Serialize + DeserializeOwned, P: AsRef<Path>>(
 pub fn read_from_file<V: Point + Serialize + DeserializeOwned, P: AsRef<Path>>(
     path: P,
 ) -> Result<DeserializeSdf<V>, SerdeError> {
-    Ok(deserialize(&std::fs::read(path)?)?)
+    deserialize(&std::fs::read(path)?)
 }
 
 // ----------------------------------------------------------------------------

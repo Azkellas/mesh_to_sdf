@@ -59,6 +59,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 black_box(&vertices),
                 black_box(mesh_to_sdf::Topology::TriangleList(Some(indices))),
                 black_box(&query_points),
+                black_box(mesh_to_sdf::AccelerationMethod::None),
                 black_box(mesh_to_sdf::SignMethod::Normal),
             );
         });
@@ -70,7 +71,20 @@ fn criterion_benchmark(c: &mut Criterion) {
                 black_box(&vertices),
                 black_box(mesh_to_sdf::Topology::TriangleList(Some(indices))),
                 black_box(&query_points),
+                black_box(mesh_to_sdf::AccelerationMethod::None),
                 black_box(mesh_to_sdf::SignMethod::Raycast),
+            );
+        });
+    });
+
+    c.bench_function("generate_sdf_bvh", |b| {
+        b.iter(|| {
+            mesh_to_sdf::generate_sdf(
+                black_box(&vertices),
+                black_box(mesh_to_sdf::Topology::TriangleList(Some(indices))),
+                black_box(&query_points),
+                black_box(mesh_to_sdf::AccelerationMethod::Bvh),
+                black_box(mesh_to_sdf::SignMethod::Normal),
             );
         });
     });

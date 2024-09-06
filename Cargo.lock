@@ -574,6 +574,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ff69b9dd49fd426c69a0db9fc04dd934cdb6645ff000864d98f7e2af8830eaa"
 
 [[package]]
+name = "bvh"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "130070ae145ee1deee52b77d4bbf7a0345ee1771ee363211807ddaaf64652f0d"
+dependencies = [
+ "approx 0.5.1",
+ "log",
+ "nalgebra",
+ "num",
+ "rand",
+ "rayon",
+]
+
+[[package]]
 name = "bytemuck"
 version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2177,6 +2191,7 @@ dependencies = [
 name = "mesh_to_sdf"
 version = "0.2.1"
 dependencies = [
+ "bvh",
  "cgmath",
  "criterion",
  "easy-gltf",
@@ -2304,9 +2319,9 @@ dependencies = [
 
 [[package]]
 name = "nalgebra"
-version = "0.33.0"
+version = "0.32.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c4b5f057b303842cf3262c27e465f4c303572e7f6b0648f60e16248ac3397f4"
+checksum = "7b5c17de023a86f59ed79891b2e5d5a94c705dbe904a5b5c9c952ea6221b03e4"
 dependencies = [
  "approx 0.5.1",
  "matrixmultiply",
@@ -2421,6 +2436,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "num"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3135b08af27d103b0a51f2ae0f8632117b7b185ccf931445affa8df530576a41"
+dependencies = [
+ "num-bigint",
+ "num-complex",
+ "num-integer",
+ "num-iter",
+ "num-rational",
+ "num-traits",
+]
+
+[[package]]
 name = "num-bigint"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2458,6 +2487,17 @@ version = "0.1.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7969661fd2958a5cb096e56c8e1ad0444ac2bbcd0061bd28660485a44879858f"
 dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "num-iter"
+version = "0.1.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1429034a0490724d0075ebb2bc9e875d6503c3cf69e235a8941aa757d83ef5bf"
+dependencies = [
+ "autocfg",
+ "num-integer",
  "num-traits",
 ]
 
@@ -3298,9 +3338,9 @@ dependencies = [
 
 [[package]]
 name = "simba"
-version = "0.9.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3a386a501cd104797982c15ae17aafe8b9261315b5d07e3ec803f2ea26be0fa"
+checksum = "061507c94fc6ab4ba1c9a0305018408e312e17c041eb63bef8aa726fa33aceae"
 dependencies = [
  "approx 0.5.1",
  "num-complex",
