@@ -174,13 +174,6 @@ where
 
     let data = data.read().unwrap().clone();
 
-    println!("Scenes: #{}", res.len());
-    println!("Models: #{}", data.models.len());
-    println!("Materials: #{}", data.materials.len());
-    println!("RGB Images: #{}", data.rgb_images.len());
-    println!("RGBA Images: #{}", data.rgba_images.len());
-    println!("Gray Images: #{}", data.gray_images.len());
-
     Ok((res, data))
 }
 
@@ -198,7 +191,8 @@ mod tests {
     }
 
     fn load_test_file(path: &str) -> Result<(Vec<Scene>, GltfData), gltf::Error> {
-        let path = std::path::Path::new(file!()).join("../../../..").join(path);
+        let folder = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let path = std::path::Path::new(&folder).join(path);
         load(path)
     }
 
