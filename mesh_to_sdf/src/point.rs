@@ -18,7 +18,7 @@ mod impl_nalgebra;
 /// While everything could be done with new/x/y/z only,
 /// the other methods are provided for optimization purposes,
 /// relying on the client math library to provide optimized implementations when possible.
-pub trait Point: Sized + Copy + Sync + Send {
+pub trait Point: Sized + Copy + Sync + Send + std::fmt::Debug + PartialEq {
     /// If the `serde` feature is enabled, the Point should be serializable and deserializable.
     /// You should set Serde to Self:
     /// ```ignore
@@ -50,6 +50,13 @@ pub trait Point: Sized + Copy + Sync + Send {
     /// Get the z coordinate.
     fn z(&self) -> f32;
 
+    /// Get the x coordinate mutably.
+    fn x_mut(&mut self) -> &mut f32;
+    /// Get the y coordinate.
+    fn y_mut(&mut self) -> &mut f32;
+    /// Get the z coordinate.
+    fn z_mut(&mut self) -> &mut f32;
+    
     /// Get the coordinate at index `i`.
     fn get(&self, i: usize) -> f32 {
         match i {
@@ -63,11 +70,6 @@ pub trait Point: Sized + Copy + Sync + Send {
     // Past this point, all methods are optional.
     // You are encouraged to implement them if your math library provides equivalent methods for optimization purposes,
     // but a default implementation is provided that uses new/x/y/z as a fallback.
-
-    /// Compare two points for equality.
-    fn eq(&self, other: &Self) -> bool {
-        self.x() == other.x() && self.y() == other.y() && self.z() == other.z()
-    }
 
     /// Add two points.
     fn add(&self, other: &Self) -> Self {
@@ -105,6 +107,12 @@ pub trait Point: Sized + Copy + Sync + Send {
     fn dist(&self, other: &Self) -> f32 {
         self.sub(other).length()
     }
+    /// Distance squared between two points.
+    fn dist2(&self, other: &Self) -> f32 {
+        let diff = self.sub(other);
+        diff.dot(&diff)
+    }
+
     /// Multiply a point by a scalar.
     fn fmul(&self, other: f32) -> Self {
         Self::new(self.x() * other, self.y() * other, self.z() * other)

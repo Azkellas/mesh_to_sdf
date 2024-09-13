@@ -21,9 +21,8 @@
 //!     &vertices,
 //!     Topology::TriangleList(Some(&indices)), // TriangleList as opposed to TriangleStrip
 //!     &query_points,
-//!     AccelerationMethod::Bvh, // Use bvh to accelerate queries.
-//!     SignMethod::Raycast, // How the sign is computed.
-//! );                       // Raycast is robust but requires the mesh to be watertight.
+//!     AccelerationMethod::RtreeBvh, // Use an r-tree and a bvh to accelerate queries.
+//! );
 //!
 //! for point in query_points.iter().zip(sdf.iter()) {
 //!     // distance is positive outside the mesh and negative inside.
@@ -78,9 +77,22 @@
 //! - [`SignMethod::Normal`]: uses the normals of the triangles to estimate the sign by doing a dot product with the direction of the query point.
 //!     It works for non-watertight meshes but might leak negative distances outside the mesh.
 //!
-//! For grid generation, `Raycast` is ~1% slower.
-//! For query points, `Raycast` is ~10% slower.
-//! Note that it depends on the query points / grid size to triangle ratio, but this gives a rough idea.
+//! Both methods have roughly the same performances, depending on the acceleration structure used for generic queries.
+//!
+//! ---
+//!
+//! #### Acceleration structures
+//!
+//! For generic queries, you can use acceleration structures to speed up the computation.
+//! - [`AccelerationMethod::None`]: no acceleration structure. This is the slowest method but requires no extra memory.
+//! - [`AccelerationMethod::Bvh`]: Bounding Volume Hierarchy. Accepts a `SignMethod`.
+//! - [`AccelerationMethod::Rtree`]: R-tree. Only compatible with `SignMethod::Normal`. The fastest method assuming you have more than a couple thousands of queries.
+//! - [`AccelerationMethod::RtreeBvh`] (default): Uses R-tree for nearest neighbor search and Bvh for raycasting.
+//!
+//! If your mesh is watertight and you have more than a thousand queries/triangles, you should use `AccelerationMethod::RtreeBvh` for best performances.
+//! If it's not watertight, you can use `AccelerationMethod::Rtree` instead.
+//!
+//! `Rtree` methods are ~4x faster than `Bvh` methods for big enough data. `AccelerationMethod::None` scales really poorly and should be avoided unless for small datasets or if you're really tight on memory.
 //!
 //! ---
 //!
@@ -206,15 +218,26 @@ pub enum SignMethod {
 }
 
 /// Acceleration structure to speed up the computation.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+///
+/// `RtreeBvh` is the fastest method but also the most memory intensive.
+/// If your mesh is not watertight, you can use `Rtree` instead.
+/// `Bvh` is about 4x slower than `Rtree`.
+/// `None` is the slowest method and scales really poorly but requires no extra memory.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AccelerationMethod {
     /// No acceleration structure.
-    None,
+    None(SignMethod),
     /// Bounding Volume Hierarchy.
     /// Recommended unless you have very few queries and triangles (less than a couple thousands)
     /// or if you're really tight on memory as it requires more memory than the default method.
+    Bvh(SignMethod),
+    /// R-tree
+    /// Only compatible with `SignMethod::Normal`
+    Rtree,
+    /// R-tree and Bvh
+    /// Uses R-tree for nearest neighbor search and Bvh for ray intersection.
     #[default]
-    Bvh,
+    RtreeBvh,
 }
 
 /// Compare two signed distances, taking into account floating point errors and signs.
@@ -237,8 +260,10 @@ fn compare_distances(a: f32, b: f32) -> std::cmp::Ordering {
     }
 }
 
+#[derive(Clone)]
 struct BvhNode<V: Point> {
     vertex_indices: (usize, usize, usize),
+    vertices: (V, V, V),
     node_index: usize,
     bounding_box: (V, V),
 }
@@ -287,11 +312,11 @@ impl<V: Point> bvh::bounding_hierarchy::BHShape<f32, 3> for BvhNode<V> {
 ///     &vertices,
 ///     Topology::TriangleList(Some(&indices)),
 ///     &query_points,
-///     AccelerationMethod::Bvh,    // Use bvh to accelerate queries.
-///                                 // Recommended unless you have very few queries and triangles (less than a couple thousands)
-///                                 // or if you're really tight on memory as it requires more memory than the default method.
-///     SignMethod::Raycast,        // How the sign is computed.
-/// );                              // Raycast is robust but requires the mesh to be watertight.
+///     AccelerationMethod::RtreeBvh,   // Use an rtree and a bvh to accelerate queries.
+///                                     // Recommended unless you have very few queries and triangles (less than a couple thousands)
+///                                     // or if you're really tight on memory as it requires more memory than other methods.
+///                                     // This uses raycasting to compute sign. This is robust but requires the mesh to be watertight.
+/// );                                  // If your mesh isn't watertight, you can use AccelerationMethod::Rtree instead.
 ///
 /// for point in query_points.iter().zip(sdf.iter()) {
 ///     println!("Distance to {:?}: {}", point.0, point.1);
@@ -304,17 +329,20 @@ pub fn generate_sdf<V, I>(
     indices: Topology<I>,
     query_points: &[V],
     acceleration_method: AccelerationMethod,
-    sign_method: SignMethod,
 ) -> Vec<f32>
 where
     V: Point,
     I: Copy + Into<u32> + Sync + Send,
 {
     match acceleration_method {
-        AccelerationMethod::None => {
+        AccelerationMethod::None(sign_method) => {
             generate_sdf_default(vertices, indices, query_points, sign_method)
         }
-        AccelerationMethod::Bvh => generate_sdf_bvh(vertices, indices, query_points, sign_method),
+        AccelerationMethod::Bvh(sign_method) => {
+            generate_sdf_bvh(vertices, indices, query_points, sign_method)
+        }
+        AccelerationMethod::Rtree => generate_sdf_rtree(vertices, indices, query_points),
+        AccelerationMethod::RtreeBvh => generate_sdf_rtree_bvh(vertices, indices, query_points),
     }
 }
 
@@ -336,6 +364,11 @@ where
     let mut bvh_nodes = Topology::get_triangles(vertices, indices)
         .map(|triangle| BvhNode {
             vertex_indices: triangle,
+            vertices: (
+                vertices[triangle.0],
+                vertices[triangle.1],
+                vertices[triangle.2],
+            ),
             node_index: 0,
             bounding_box: geo::triangle_bounding_box(
                 &vertices[triangle.0],
@@ -413,6 +446,207 @@ where
                 } else {
                     min_dist
                 }
+            }
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
+struct PointWrapper<V>(V);
+
+impl<V> rstar::Point for PointWrapper<V>
+where
+    V: Point,
+{
+    type Scalar = f32;
+
+    const DIMENSIONS: usize = 3;
+
+    fn generate(mut generator: impl FnMut(usize) -> Self::Scalar) -> Self {
+        let x = generator(0);
+        let y = generator(1);
+        let z = generator(2);
+        PointWrapper(V::new(x, y, z))
+    }
+
+    fn nth(&self, index: usize) -> Self::Scalar {
+        match index {
+            0 => self.0.x(),
+            1 => self.0.y(),
+            2 => self.0.z(),
+            _ => panic!("Index out of bounds"),
+        }
+    }
+
+    fn nth_mut(&mut self, index: usize) -> &mut Self::Scalar {
+        match index {
+            0 => self.0.x_mut(),
+            1 => self.0.y_mut(),
+            2 => self.0.z_mut(),
+            _ => panic!("Index out of bounds"),
+        }
+    }
+}
+
+impl<V: Point> rstar::RTreeObject for BvhNode<V> {
+    type Envelope = rstar::AABB<PointWrapper<V>>;
+
+    fn envelope(&self) -> Self::Envelope {
+        rstar::AABB::from_corners(
+            PointWrapper(self.bounding_box.0),
+            PointWrapper(self.bounding_box.1),
+        )
+    }
+}
+
+impl<V: Point> rstar::PointDistance for BvhNode<V> {
+    // Required method
+    fn distance_2(
+        &self,
+        point: &<Self::Envelope as rstar::Envelope>::Point,
+    ) -> <<Self::Envelope as rstar::Envelope>::Point as rstar::Point>::Scalar {
+        geo::point_triangle_distance2(
+            &point.0,
+            &self.vertices.0,
+            &self.vertices.1,
+            &self.vertices.2,
+        )
+    }
+}
+
+/// Generate a signed distance field from a mesh using an r-tree.
+/// Query points are expected to be in the same space as the mesh.
+///
+/// Returns a vector of signed distances.
+/// Queries outside the mesh will have a positive distance, and queries inside the mesh will have a negative distance.
+///
+/// This method is only compatible with normal sign method.
+/// If you want to use raycasting, use `AccelerationMethod::RtreeBvh` instead.
+fn generate_sdf_rtree<V, I>(vertices: &[V], indices: Topology<I>, query_points: &[V]) -> Vec<f32>
+where
+    V: Point,
+    I: Copy + Into<u32> + Sync + Send,
+{
+    let bvh_nodes = Topology::get_triangles(vertices, &indices)
+        .map(|triangle| BvhNode {
+            vertex_indices: triangle,
+            vertices: (
+                vertices[triangle.0],
+                vertices[triangle.1],
+                vertices[triangle.2],
+            ),
+            node_index: 0,
+            bounding_box: geo::triangle_bounding_box(
+                &vertices[triangle.0],
+                &vertices[triangle.1],
+                &vertices[triangle.2],
+            ),
+        })
+        .collect_vec();
+
+    let rtree = rstar::RTree::bulk_load(bvh_nodes);
+
+    query_points
+        .par_iter()
+        .map(|point| {
+            let nearest = rtree.nearest_neighbor(&PointWrapper(*point));
+            let nearest = nearest.unwrap();
+            geo::point_triangle_signed_distance(
+                point,
+                &nearest.vertices.0,
+                &nearest.vertices.1,
+                &nearest.vertices.2,
+            )
+        })
+        .collect()
+}
+
+/// Generate a signed distance field from a mesh using an r-tree for nearest neighbor search and a bvh for ray intersection.
+/// Query points are expected to be in the same space as the mesh.
+///
+/// Returns a vector of signed distances.
+/// Queries outside the mesh will have a positive distance, and queries inside the mesh will have a negative distance.
+fn generate_sdf_rtree_bvh<V, I>(
+    vertices: &[V],
+    indices: Topology<I>,
+    query_points: &[V],
+) -> Vec<f32>
+where
+    V: Point,
+    I: Copy + Into<u32> + Sync + Send,
+{
+    let mut bvh_nodes = Topology::get_triangles(vertices, &indices)
+        .map(|triangle| BvhNode {
+            vertex_indices: triangle,
+            vertices: (
+                vertices[triangle.0],
+                vertices[triangle.1],
+                vertices[triangle.2],
+            ),
+            node_index: 0,
+            bounding_box: geo::triangle_bounding_box(
+                &vertices[triangle.0],
+                &vertices[triangle.1],
+                &vertices[triangle.2],
+            ),
+        })
+        .collect_vec();
+
+    if bvh_nodes.is_empty() {
+        return vec![];
+    }
+
+    let rtree = rstar::RTree::bulk_load(bvh_nodes.clone());
+    let bvh = Bvh::build_par(&mut bvh_nodes);
+
+    query_points
+        .par_iter()
+        .map(|point| {
+            let nearest = rtree.nearest_neighbor(&PointWrapper(*point));
+            let nearest = nearest.unwrap(); // tree isn't empty.
+
+            let dist = geo::point_triangle_distance(
+                point,
+                &nearest.vertices.0,
+                &nearest.vertices.1,
+                &nearest.vertices.2,
+            );
+
+            let alignments = [
+                (geo::GridAlign::X, nalgebra::Vector3::new(1.0, 0.0, 0.0)),
+                (geo::GridAlign::Y, nalgebra::Vector3::new(0.0, 1.0, 0.0)),
+                (geo::GridAlign::Z, nalgebra::Vector3::new(0.0, 0.0, 1.0)),
+            ];
+
+            let mut insides = 0;
+            for (alignment, direction) in alignments {
+                let ray = bvh::ray::Ray::new(
+                    nalgebra::Point3::new(point.x(), point.y(), point.z()),
+                    direction,
+                );
+                let mut intersection_count = 0;
+                let hitcast = bvh.traverse(&ray, &bvh_nodes);
+                for bvh_node in hitcast {
+                    let a = &bvh_node.vertices.0;
+                    let b = &bvh_node.vertices.1;
+                    let c = &bvh_node.vertices.2;
+                    let intersect =
+                        geo::ray_triangle_intersection_aligned(point, [a, b, c], alignment);
+                    if intersect.is_some() {
+                        intersection_count += 1;
+                    }
+                }
+
+                if intersection_count % 2 == 1 {
+                    insides += 1;
+                }
+            }
+
+            // Return inside if at least two are insides.
+            if insides > 1 {
+                -dist
+            } else {
+                dist
             }
         })
         .collect()
@@ -504,8 +738,7 @@ mod tests {
             &vertices,
             crate::Topology::TriangleList(Some(indices)),
             &query_points,
-            AccelerationMethod::None,
-            SignMethod::Normal,
+            AccelerationMethod::None(SignMethod::Normal),
         );
 
         // pysdf [0.45216727 -0.6997909   0.45411023] # negative is outside in pysdf
@@ -539,8 +772,7 @@ mod tests {
             &vertices,
             crate::Topology::TriangleList(Some(&indices)),
             &query_points,
-            AccelerationMethod::None,
-            SignMethod::Raycast,
+            AccelerationMethod::None(SignMethod::Raycast),
         );
         let grid_sdf = generate_grid_sdf(
             &vertices,
@@ -572,16 +804,14 @@ mod tests {
             &vertices,
             crate::Topology::TriangleList(Some(indices)),
             &query_points,
-            AccelerationMethod::Bvh,
-            SignMethod::Raycast,
+            AccelerationMethod::Bvh(SignMethod::Raycast),
         );
 
         let sdf = generate_sdf(
             &vertices,
             crate::Topology::TriangleList(Some(indices)),
             &query_points,
-            AccelerationMethod::None,
-            SignMethod::Raycast,
+            AccelerationMethod::None(SignMethod::Raycast),
         );
 
         for (idx, (bvh, sdf)) in bvh_sdf.iter().zip(sdf.iter()).enumerate() {
@@ -631,8 +861,7 @@ mod tests {
             &vertices,
             crate::Topology::TriangleList(Some(indices)),
             &query_points,
-            AccelerationMethod::Bvh,
-            SignMethod::Raycast,
+            AccelerationMethod::Bvh(SignMethod::Raycast),
         );
         let grid_sdf = generate_grid_sdf(
             &vertices,
@@ -692,8 +921,7 @@ mod tests {
             &vertices,
             crate::Topology::TriangleList(Some(indices)),
             &query_points,
-            AccelerationMethod::Bvh,
-            SignMethod::Normal,
+            AccelerationMethod::Bvh(SignMethod::Normal),
         );
         let grid_sdf = generate_grid_sdf(
             &vertices,
@@ -708,6 +936,212 @@ mod tests {
             // thread 'tests::test_generate_bvh_big' panicked at mesh_to_sdf\src\lib.rs:1232:13:
             // i: 17435: 0.0076956493 0.030284861
             // i: 1742: 0.09342232 -0.094851956
+            assert!(
+                (sdf - grid_sdf).abs() < 0.01,
+                "i: {}: {} {}",
+                i,
+                sdf,
+                grid_sdf
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_rtree() {
+        let model = &easy_gltf::load("assets/suzanne.glb").unwrap()[0].models[0];
+        let vertices = model.vertices().iter().map(|v| v.position).collect_vec();
+        let indices = model.indices().unwrap();
+        let query_points = [
+            cgmath::Vector3::new(0.01, 0.01, 0.5),
+            cgmath::Vector3::new(1.0, 1.0, 1.0),
+            cgmath::Vector3::new(0.1, 0.2, 0.2),
+            cgmath::Vector3::new(1.1, 2.2, 5.2),
+            cgmath::Vector3::new(-0.1, 0.2, -0.2),
+        ];
+
+        let rtree_sdf = generate_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &query_points,
+            AccelerationMethod::Rtree,
+        );
+
+        let sdf = generate_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &query_points,
+            AccelerationMethod::Bvh(SignMethod::Normal),
+        );
+
+        for (idx, (rtree, sdf)) in rtree_sdf.iter().zip(sdf.iter()).enumerate() {
+            assert!(
+                (rtree - sdf).abs() < 0.01,
+                "{:?}: {} != {}",
+                query_points[idx],
+                rtree,
+                sdf
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_rtree_big() {
+        let model = &easy_gltf::load("assets/suzanne.glb").unwrap()[0].models[0];
+        let vertices = model.vertices().iter().map(|v| v.position).collect_vec();
+        let indices = model.indices().unwrap();
+
+        let bbox_min = vertices.iter().fold(
+            cgmath::Vector3::new(f32::MAX, f32::MAX, f32::MAX),
+            |acc, v| cgmath::Vector3 {
+                x: acc.x.min(v.x),
+                y: acc.y.min(v.y),
+                z: acc.z.min(v.z),
+            },
+        );
+        let bbox_max = vertices.iter().fold(
+            cgmath::Vector3::new(-f32::MAX, -f32::MAX, -f32::MAX),
+            |acc, v| cgmath::Vector3 {
+                x: acc.x.max(v.x),
+                y: acc.y.max(v.y),
+                z: acc.z.max(v.z),
+            },
+        );
+
+        let grid = Grid::from_bounding_box(&bbox_min, &bbox_max, [32, 32, 32]);
+        let mut query_points = Vec::new();
+        for x in 0..grid.get_cell_count()[0] {
+            for y in 0..grid.get_cell_count()[1] {
+                for z in 0..grid.get_cell_count()[2] {
+                    query_points.push(grid.get_cell_center(&[x, y, z]));
+                }
+            }
+        }
+        let sdf = generate_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &query_points,
+            AccelerationMethod::Rtree,
+        );
+        let grid_sdf = generate_grid_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &grid,
+            SignMethod::Normal,
+        );
+
+        let mut fails = 0;
+        // Test against generate_sdf
+        for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
+            // Assert we have the same absolute value.
+            assert!(
+                (sdf.abs() - grid_sdf.abs()).abs() < 0.01,
+                "i: {}: {} {}",
+                i,
+                sdf,
+                grid_sdf
+            );
+
+            // Count sign issues.
+            if (sdf - grid_sdf).abs() > 0.01 {
+                fails += 1;
+            }
+        }
+
+        // We can expect sign to be different for some cells.
+        // This is because the rtree only outputs the closest triangle
+        // while bvh works with a subset of close triangles and refines the sign based on those.
+        assert!(
+            (fails as f32 / sdf.len() as f32) < 0.01,
+            "fails: {fails}/{}",
+            sdf.len()
+        );
+    }
+
+    #[test]
+    fn test_generate_rtree_bvh() {
+        let model = &easy_gltf::load("assets/suzanne.glb").unwrap()[0].models[0];
+        let vertices = model.vertices().iter().map(|v| v.position).collect_vec();
+        let indices = model.indices().unwrap();
+        let query_points = [
+            cgmath::Vector3::new(0.01, 0.01, 0.5),
+            cgmath::Vector3::new(1.0, 1.0, 1.0),
+            cgmath::Vector3::new(0.1, 0.2, 0.2),
+            cgmath::Vector3::new(1.1, 2.2, 5.2),
+            cgmath::Vector3::new(-0.1, 0.2, -0.2),
+        ];
+
+        let rtree_sdf = generate_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &query_points,
+            AccelerationMethod::RtreeBvh,
+        );
+
+        let sdf = generate_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &query_points,
+            AccelerationMethod::Bvh(SignMethod::Raycast),
+        );
+
+        for (idx, (rtree, sdf)) in rtree_sdf.iter().zip(sdf.iter()).enumerate() {
+            assert!(
+                (rtree - sdf).abs() < 0.01,
+                "{:?}: {} != {}",
+                query_points[idx],
+                rtree,
+                sdf
+            );
+        }
+    }
+
+    #[test]
+    fn test_generate_rtree_bvh_big() {
+        let model = &easy_gltf::load("assets/suzanne.glb").unwrap()[0].models[0];
+        let vertices = model.vertices().iter().map(|v| v.position).collect_vec();
+        let indices = model.indices().unwrap();
+
+        let bbox_min = vertices.iter().fold(
+            cgmath::Vector3::new(f32::MAX, f32::MAX, f32::MAX),
+            |acc, v| cgmath::Vector3 {
+                x: acc.x.min(v.x),
+                y: acc.y.min(v.y),
+                z: acc.z.min(v.z),
+            },
+        );
+        let bbox_max = vertices.iter().fold(
+            cgmath::Vector3::new(-f32::MAX, -f32::MAX, -f32::MAX),
+            |acc, v| cgmath::Vector3 {
+                x: acc.x.max(v.x),
+                y: acc.y.max(v.y),
+                z: acc.z.max(v.z),
+            },
+        );
+
+        let grid = Grid::from_bounding_box(&bbox_min, &bbox_max, [32, 32, 32]);
+        let mut query_points = Vec::new();
+        for x in 0..grid.get_cell_count()[0] {
+            for y in 0..grid.get_cell_count()[1] {
+                for z in 0..grid.get_cell_count()[2] {
+                    query_points.push(grid.get_cell_center(&[x, y, z]));
+                }
+            }
+        }
+        let sdf = generate_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &query_points,
+            AccelerationMethod::RtreeBvh,
+        );
+        let grid_sdf = generate_grid_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(indices)),
+            &grid,
+            SignMethod::Raycast,
+        );
+
+        // Test against generate_sdf
+        for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
             assert!(
                 (sdf - grid_sdf).abs() < 0.01,
                 "i: {}: {} {}",

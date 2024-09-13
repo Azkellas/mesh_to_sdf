@@ -2,10 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- New `AccelerationMethod`s with `Rtree` and `RtreeBvh`. `Rtree` uses a r-tree for distances and the normal sign method, while `RtreeBvh` uses a r-tree for distances and a bvh for raycast.
+    Both are about 4x faster than the previous `Bvh` for 10k and more queries. `RtreeBvh` is the new default method.
+
 ### Changed
 
 - `generate_grid_sdf` is now fully parallelized. It's between 10x and 20x faster on a high end cpu, depending on the number of triangles and the grid resolution.
-
+- `AccelerationMethod` now includes the `SignMethod` when it makes sense. `generate_sdf` only takes the `AccelerationMethod` parameter, and the `SignMethod` is inferred from it.
+    This is because not all acceleration methods support all sign methods. For example, `Rtree` only supports the normal sign method, while `RtreeBvh` supports raycasting only.
+- `Point` trait now requires `Debug` and `PartialEq` to be implemented.
 
 ## [0.3.0]
 

@@ -28,6 +28,13 @@ pub fn point_triangle_distance<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) -> f32 
     x0.dist(&nearest)
 }
 
+/// Compute the distance squared between a point and a triangle.
+pub fn point_triangle_distance2<V: Point>(x0: &V, x1: &V, x2: &V, x3: &V) -> f32 {
+    // Compute the unsigned distance from the point to the plane of the triangle
+    let nearest = closest_point_triangle(x0, x1, x2, x3);
+    x0.dist2(&nearest)
+}
+
 /// Compute the signed distance between a point and a triangle.
 /// Sign is positive if the point is outside the mesh, negative if inside.
 /// Assume all normals are pointing outside the mesh.

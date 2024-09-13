@@ -23,6 +23,18 @@ impl Point for nalgebra::Point3<f32> {
     fn z(&self) -> f32 {
         self.z
     }
+
+    fn x_mut(&mut self) -> &mut f32 {
+        &mut self.x
+    }
+
+    fn y_mut(&mut self) -> &mut f32 {
+        &mut self.y
+    }
+
+    fn z_mut(&mut self) -> &mut f32 {
+        &mut self.z
+    }
 }
 
 impl Point for nalgebra::Vector3<f32> {
@@ -47,6 +59,18 @@ impl Point for nalgebra::Vector3<f32> {
     /// Get the z coordinate.
     fn z(&self) -> f32 {
         self.z
+    }
+
+    fn x_mut(&mut self) -> &mut f32 {
+        &mut self.x
+    }
+
+    fn y_mut(&mut self) -> &mut f32 {
+        &mut self.y
+    }
+
+    fn z_mut(&mut self) -> &mut f32 {
+        &mut self.z
     }
 
     /// Add two points.

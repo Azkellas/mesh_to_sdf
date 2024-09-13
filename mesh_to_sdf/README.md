@@ -23,9 +23,8 @@ let sdf: Vec<f32> = generate_sdf(
     &vertices,
     Topology::TriangleList(Some(&indices)), // TriangleList as opposed to TriangleStrip
     &query_points,
-    AccelerationMethod::Bvh, // Use bvh to accelerate queries.
-    SignMethod::Raycast, // How the sign is computed.
-);                       // Raycast is robust but requires the mesh to be watertight.
+    AccelerationMethod::RtreeBvh, // Use an r-tree and a bvh to accelerate queries.
+);
 
 for point in query_points.iter().zip(sdf.iter()) {
     // distance is positive outside the mesh and negative inside.
@@ -78,9 +77,22 @@ This crate provides two methods to compute the sign of the distance:
 - [`SignMethod::Normal`]: uses the normals of the triangles to estimate the sign by doing a dot product with the direction of the query point.
     It works for non-watertight meshes but might leak negative distances outside the mesh.
 
-For grid generation, `Raycast` is ~1% slower.
-For query points, `Raycast` is ~10% slower.
-Note that it depends on the query points / grid size to triangle ratio, but this gives a rough idea.
+Both methods have roughly the same performances, depending on the acceleration structure used for generic queries.
+
+---
+
+##### Acceleration structures
+
+For generic queries, you can use acceleration structures to speed up the computation.
+- [`AccelerationMethod::None`]: no acceleration structure. This is the slowest method but requires no extra memory.
+- [`AccelerationMethod::Bvh`]: Bounding Volume Hierarchy. Accepts a `SignMethod`.
+- [`AccelerationMethod::Rtree`]: R-tree. Only compatible with `SignMethod::Normal`. The fastest method assuming you have more than a couple thousands of queries.
+- [`AccelerationMethod::RtreeBvh`] (default): Uses R-tree for nearest neighbor search and Bvh for raycasting.
+
+If your mesh is watertight and you have more than a thousand queries/triangles, you should use `AccelerationMethod::RtreeBvh` for best performances.
+If it's not watertight, you can use `AccelerationMethod::Rtree` instead.
+
+`Rtree` methods are ~4x faster than `Bvh` methods for big enough data. `AccelerationMethod::None` scales really poorly and should be avoided unless for small datasets or if you're really tight on memory.
 
 ---
 

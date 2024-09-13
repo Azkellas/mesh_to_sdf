@@ -1,5 +1,6 @@
-//! This example demonstrates how to use mesh_to_sdf to generate signed distance fields from a glTF model.
+//! This example demonstrates how to use `mesh_to_sdf` to generate signed distance fields from a glTF model.
 use itertools::Itertools;
+use mesh_to_sdf::{AccelerationMethod, SignMethod, Topology};
 
 fn main() {
     let path = "assets/suzanne.glb";
@@ -27,10 +28,9 @@ fn main() {
     // Get signed distance at query points
     let sdf = mesh_to_sdf::generate_sdf(
         &vertices,
-        mesh_to_sdf::Topology::TriangleList(Some(indices)),
+        Topology::TriangleList(Some(indices)),
         &query_points,
-        mesh_to_sdf::AccelerationMethod::Bvh,
-        mesh_to_sdf::SignMethod::Raycast,
+        AccelerationMethod::Bvh(SignMethod::Raycast),
     );
 
     for point in query_points.iter().zip(sdf.iter()) {

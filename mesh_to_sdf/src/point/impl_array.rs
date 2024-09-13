@@ -19,6 +19,18 @@ impl Point for [f32; 3] {
     fn z(&self) -> f32 {
         self[2]
     }
+
+    fn x_mut(&mut self) -> &mut f32 {
+        &mut self[0]
+    }
+
+    fn y_mut(&mut self) -> &mut f32 {
+        &mut self[1]
+    }
+
+    fn z_mut(&mut self) -> &mut f32 {
+        &mut self[2]
+    }
 }
 
 #[cfg(test)]

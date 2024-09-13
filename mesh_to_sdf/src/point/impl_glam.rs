@@ -24,6 +24,18 @@ impl Point for glam::Vec3 {
         self.z
     }
 
+    fn x_mut(&mut self) -> &mut f32 {
+        &mut self.x
+    }
+
+    fn y_mut(&mut self) -> &mut f32 {
+        &mut self.y
+    }
+
+    fn z_mut(&mut self) -> &mut f32 {
+        &mut self.z
+    }
+
     /// Add two points.
     fn add(&self, other: &Self) -> Self {
         *self + *other
