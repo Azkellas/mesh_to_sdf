@@ -50,6 +50,16 @@ pub trait Point: Sized + Copy + Sync + Send {
     /// Get the z coordinate.
     fn z(&self) -> f32;
 
+    /// Get the coordinate at index `i`.
+    fn get(&self, i: usize) -> f32 {
+        match i {
+            0 => self.x(),
+            1 => self.y(),
+            2 => self.z(),
+            _ => panic!("Index out of bounds"),
+        }
+    }
+
     // Past this point, all methods are optional.
     // You are encouraged to implement them if your math library provides equivalent methods for optimization purposes,
     // but a default implementation is provided that uses new/x/y/z as a fallback.

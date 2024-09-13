@@ -605,23 +605,28 @@ where
             let bounding_box = geo::triangle_bounding_box(a, b, c);
 
             // The bounding box is snapped to the grid.
-            let min_cell = match grid.snap_point_to_grid(&bounding_box.0) {
+            let mut min_cell = match grid.snap_point_to_grid(&bounding_box.0) {
                 SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
             };
-            let max_cell = match grid.snap_point_to_grid(&bounding_box.1) {
+            let mut max_cell = match grid.snap_point_to_grid(&bounding_box.1) {
                 SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
             };
-            // Add one to max_cell and remove one to min_cell to check nearby cells.
-            let min_cell = [
-                if min_cell[0] == 0 { 0 } else { min_cell[0] - 1 },
-                if min_cell[1] == 0 { 0 } else { min_cell[1] - 1 },
-                if min_cell[2] == 0 { 0 } else { min_cell[2] - 1 },
-            ];
-            let max_cell = [
-                (max_cell[0] + 1).min(grid.get_cell_count()[0] - 1),
-                (max_cell[1] + 1).min(grid.get_cell_count()[1] - 1),
-                (max_cell[2] + 1).min(grid.get_cell_count()[2] - 1),
-            ];
+
+            // We add the neighbour cells if the bounding box is on the wrong side of the grid aligned bounding box.
+            let min_cell_f = grid.get_cell_center(&min_cell);
+            for i in 0..3 {
+                if min_cell[i] > 0 && min_cell_f.get(i) > bounding_box.0.get(i) {
+                    min_cell[i] -= 1;
+                }
+            }
+            let max_cell_f = grid.get_cell_center(&max_cell);
+            for i in 0..3 {
+                if max_cell[i] < grid.get_cell_count()[i] - 1
+                    && max_cell_f.get(i) < bounding_box.1.get(i)
+                {
+                    max_cell[i] += 1;
+                }
+            }
 
             // For each cell in the bounding box.
             for cell in itertools::iproduct!(
