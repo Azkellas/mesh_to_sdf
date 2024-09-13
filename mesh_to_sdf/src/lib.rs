@@ -591,72 +591,78 @@ where
     let mut now = std::time::Instant::now();
 
     // init heap.
-    (*Topology::get_triangles(vertices, &indices))
-        .par_bridge()
-        .for_each(|triangle| {
-            let a = &vertices[triangle.0];
-            let b = &vertices[triangle.1];
-            let c = &vertices[triangle.2];
+    // (*Topology::get_triangles(vertices, &indices)).par_bridge() is twice faster than sequential
+    // and storing the triangles in a vec is 10x faster than sequential.
+    // This is due to the fact that rayon can better optimize the parallelization.
+    let triangles_raw: Vec<(usize, usize, usize)> =
+        Topology::get_triangles(vertices, &indices).collect::<_>();
 
-            // TODO: We can reduce the number of point here by following the triangle "slope" instead of the bounding box.
-            // Like a bresenham algorithm but in 3D. Not sure how to do it though.
-            // This would help a lot for large triangles.
-            // But large triangles means not a lot of them so it should be ok without this optimisation.
-            let bounding_box = geo::triangle_bounding_box(a, b, c);
+    triangles_raw.par_iter().for_each(|&triangle| {
+        let a = &vertices[triangle.0];
+        let b = &vertices[triangle.1];
+        let c = &vertices[triangle.2];
 
-            // The bounding box is snapped to the grid.
-            let mut min_cell = match grid.snap_point_to_grid(&bounding_box.0) {
-                SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
+        // TODO: We can reduce the number of point here by following the triangle "slope" instead of the bounding box.
+        // Like a bresenham algorithm but in 3D. Not sure how to do it though.
+        // This would help a lot for large triangles.
+        // But large triangles means not a lot of them so it should be ok without this optimisation.
+        let bounding_box = geo::triangle_bounding_box(a, b, c);
+
+        // The bounding box is snapped to the grid.
+        let mut min_cell = match grid.snap_point_to_grid(&bounding_box.0) {
+            SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
+        };
+        let mut max_cell = match grid.snap_point_to_grid(&bounding_box.1) {
+            SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
+        };
+
+        // We add the neighbour cells if the bounding box is on the wrong side of the grid aligned bounding box.
+        let min_cell_f = grid.get_cell_center(&min_cell);
+        #[expect(clippy::needless_range_loop)]
+        for i in 0..3 {
+            if min_cell[i] > 0 && min_cell_f.get(i) > bounding_box.0.get(i) {
+                min_cell[i] -= 1;
+            }
+        }
+        let max_cell_f = grid.get_cell_center(&max_cell);
+        #[expect(clippy::needless_range_loop)]
+        for i in 0..3 {
+            if max_cell[i] < grid.get_cell_count()[i] - 1
+                && max_cell_f.get(i) < bounding_box.1.get(i)
+            {
+                max_cell[i] += 1;
+            }
+        }
+
+        // For each cell in the bounding box.
+        for cell in itertools::iproduct!(
+            min_cell[0]..=max_cell[0],
+            min_cell[1]..=max_cell[1],
+            min_cell[2]..=max_cell[2]
+        ) {
+            let cell = [cell.0, cell.1, cell.2];
+            let cell_idx = grid.get_cell_idx(&cell);
+
+            let cell_pos = grid.get_cell_center(&cell);
+
+            let distance = match sign_method {
+                SignMethod::Raycast => geo::point_triangle_distance(&cell_pos, a, b, c),
+                SignMethod::Normal => geo::point_triangle_signed_distance(&cell_pos, a, b, c),
             };
-            let mut max_cell = match grid.snap_point_to_grid(&bounding_box.1) {
-                SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
-            };
 
-            // We add the neighbour cells if the bounding box is on the wrong side of the grid aligned bounding box.
-            let min_cell_f = grid.get_cell_center(&min_cell);
-            for i in 0..3 {
-                if min_cell[i] > 0 && min_cell_f.get(i) > bounding_box.0.get(i) {
-                    min_cell[i] -= 1;
+            // We first do an inexpensive check to avoid acquiring the write lock.
+            let stored_distance = preheap[cell_idx].read().1;
+            if compare_distances(distance, stored_distance).is_lt() {
+                // It seems the distance is smaller: acquire the lock and check again.
+                let mut stored_distance = preheap[cell_idx].write();
+                if compare_distances(distance, stored_distance.1).is_lt() {
+                    // New smallest ditance: update the grid and add the cell to the heap.
+                    steps.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    *stored_distance = (triangle, distance);
                 }
             }
-            let max_cell_f = grid.get_cell_center(&max_cell);
-            for i in 0..3 {
-                if max_cell[i] < grid.get_cell_count()[i] - 1
-                    && max_cell_f.get(i) < bounding_box.1.get(i)
-                {
-                    max_cell[i] += 1;
-                }
-            }
-
-            // For each cell in the bounding box.
-            for cell in itertools::iproduct!(
-                min_cell[0]..=max_cell[0],
-                min_cell[1]..=max_cell[1],
-                min_cell[2]..=max_cell[2]
-            ) {
-                let cell = [cell.0, cell.1, cell.2];
-                let cell_idx = grid.get_cell_idx(&cell);
-
-                let cell_pos = grid.get_cell_center(&cell);
-
-                let distance = match sign_method {
-                    SignMethod::Raycast => geo::point_triangle_distance(&cell_pos, a, b, c),
-                    SignMethod::Normal => geo::point_triangle_signed_distance(&cell_pos, a, b, c),
-                };
-
-                // We first do an inexpensive check to avoid acquiring the write lock.
-                let stored_distance = preheap[cell_idx].read().1;
-                if compare_distances(distance, stored_distance).is_lt() {
-                    // It seems the distance is smaller: acquire the lock and check again.
-                    let mut stored_distance = preheap[cell_idx].write();
-                    if compare_distances(distance, stored_distance.1).is_lt() {
-                        // New smallest ditance: update the grid and add the cell to the heap.
-                        steps.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        *stored_distance = (triangle, distance);
-                    }
-                }
-            }
-        });
+        }
+    });
 
     // First step is done: we have the closest triangle for each cell.
     // And a bit more since a triangle might erase the distance of another triangle later in the process.
