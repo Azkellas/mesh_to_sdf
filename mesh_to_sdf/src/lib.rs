@@ -120,7 +120,7 @@ use bvh::{bounding_hierarchy::BoundingHierarchy, bvh::Bvh};
 use bvh_ext::BvhDistance;
 use itertools::Itertools;
 use ordered_float::NotNan;
-use parking_lot::{lock_api::Mutex, RwLock};
+use parking_lot::RwLock;
 use rayon::prelude::*;
 
 mod bvh_ext;
@@ -646,7 +646,7 @@ where
                     let mut stored_distance = preheap[cell_idx].write();
                     if compare_distances(distance, stored_distance.1).is_lt() {
                         // New smallest ditance: update the grid and add the cell to the heap.
-                        steps.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        steps.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         *stored_distance = (triangle, distance);
                     }
                 }
@@ -655,7 +655,7 @@ where
 
     // First step is done: we have the closest triangle for each cell.
     // And a bit more since a triangle might erase the distance of another triangle later in the process.
-    let heap = preheap
+    let mut heap = preheap
         .iter()
         .map(|m| m.read())
         .map(|g| *g)
@@ -674,7 +674,8 @@ where
                 cell,
             }
         })
-        .collect::<std::collections::BinaryHeap<_>>();
+        .collect::<Vec<_>>();
+    heap.sort_unstable();
 
     log::info!(
         "[generate_grid_sdf] init steps: {} in {}ms",
@@ -684,12 +685,25 @@ where
     steps.store(0, std::sync::atomic::Ordering::SeqCst);
     now = std::time::Instant::now();
 
-    let heap = Mutex::<parking_lot::RawMutex, _>::new(heap);
-
+    // The most expensive part of the propagation step is gettings the next point of the heap.
+    // So the combo (triangle, cell) that has the smallest distance.
+    // To improve this, we split the heap in multiple parts and process them in parallel.
+    // This means we will habe more nodes as it is less optimized, but running in parallel will make it more than worth it.
+    // This is much faster than having a lock on a global heap or a thread dedicated to the heap sending
+    // states to working threads.
+    //
+    // As such, each working thread will have its own heap and will process it until it is empty.
     std::thread::scope(|s| {
         let thread_count = rayon::current_num_threads();
+
+        let mut heaps: Vec<Vec<State>> = vec![Vec::with_capacity(heap.len()); thread_count];
+        for (i, state) in heap.into_iter().enumerate() {
+            heaps[i % thread_count].push(state);
+        }
+
         for _ in 0..thread_count {
-            let heap = &heap;
+            let heap = heaps.pop().unwrap();
+            let mut heap = std::collections::BinaryHeap::from(heap);
             let steps = &steps;
             let distances = &distances;
 
@@ -708,7 +722,6 @@ where
 
                 loop {
                     {
-                        let mut heap = heap.lock();
                         if heap.is_empty() {
                             break;
                         }
@@ -784,7 +797,6 @@ where
 
                     if !new_states.is_empty() {
                         // We push all new states in one go to avoid acquiring the lock multiple times.
-                        let mut heap = heap.lock();
                         for &state in &new_states {
                             heap.push(state);
                         }
