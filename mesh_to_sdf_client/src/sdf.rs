@@ -28,6 +28,7 @@ pub struct Sdf {
     pub iso_limits: (f32, f32),
 
     pub bind_group: wgpu::BindGroup,
+    pub time_taken: std::time::Duration,
 }
 
 impl Sdf {
@@ -54,7 +55,11 @@ impl Sdf {
             &grid,
             sign_method,
         );
-        log::info!("SDF generation took: {}ms", now.elapsed().as_millis());
+        let time_taken = now.elapsed();
+        log::info!(
+            "SDF generation took: {:.3}ms",
+            time_taken.as_secs_f64() * 1000.0
+        );
 
         let now = std::time::Instant::now();
         // sort cells by their distance to surface.
@@ -63,7 +68,10 @@ impl Sdf {
             .sorted_by(|i, j| data[*i].total_cmp(&data[*j]))
             .map(|i| i as u32)
             .collect_vec();
-        log::info!("voxel generation took: {}ms", now.elapsed().as_millis());
+        log::info!(
+            "voxel generation took: {:.3}ms",
+            now.elapsed().as_secs_f64() * 1000.0
+        );
 
         let cell_size = grid.get_cell_size();
         let first_cell = grid.get_first_cell();
@@ -126,6 +134,7 @@ impl Sdf {
             bind_group,
             grid,
             iso_limits,
+            time_taken,
         })
     }
 
