@@ -867,8 +867,10 @@ where
                         geo::GridAlign::X,
                     ) {
                         let cell_count = distance / grid.get_cell_size().x();
-                        let cell_count = cell_count.floor() as usize;
+                        let cell_count =
+                            (cell_count.floor() as usize).min(grid.get_cell_count()[0] - 1);
                         for x in 0..=cell_count {
+                            assert!(x < grid.get_cell_count()[0]);
                             let cell = [x, y, z];
                             let cell_idx = grid.get_cell_idx(&cell);
                             if cell_idx < intersections.len() {
@@ -891,8 +893,10 @@ where
                         geo::GridAlign::Y,
                     ) {
                         let cell_count = distance / grid.get_cell_size().y();
-                        let cell_count = cell_count.floor() as usize;
+                        let cell_count =
+                            (cell_count.floor() as usize).min(grid.get_cell_count()[1] - 1);
                         for y in 0..=cell_count {
+                            assert!(y < grid.get_cell_count()[1]);
                             let cell = [x, y, z];
                             let cell_idx = grid.get_cell_idx(&cell);
                             if cell_idx < intersections.len() {
@@ -915,8 +919,10 @@ where
                         geo::GridAlign::Z,
                     ) {
                         let cell_count = distance / grid.get_cell_size().z();
-                        let cell_count = cell_count.floor() as usize;
+                        let cell_count =
+                            (cell_count.floor() as usize).min(grid.get_cell_count()[2] - 1);
                         for z in 0..=cell_count {
+                            assert!(z < grid.get_cell_count()[2]);
                             let cell = [x, y, z];
                             let cell_idx = grid.get_cell_idx(&cell);
                             if cell_idx < intersections.len() {
