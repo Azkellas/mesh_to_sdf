@@ -136,7 +136,6 @@ pub use point::Point;
 
 #[cfg(feature = "serde")]
 pub use serde::*;
-use smallvec::SmallVec;
 
 /// Mesh Topology: how indices are stored.
 pub enum Topology<'a, I>
@@ -738,100 +737,59 @@ where
             let distances = &distances;
 
             s.spawn(move || {
-                // TODO: I dont neeed the heap steps anymore!!
-                // Second step: propagate the distance to the neighbours.
+                while let Some(State { triangle, cell, .. }) = heap.pop() {
+                    steps.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let a = &vertices[triangle.0];
+                    let b = &vertices[triangle.1];
+                    let c = &vertices[triangle.2];
 
-                // This is a compromise. The more we take, the less we need to acquire the heap lock
-                // But the more useless computations we will do since we will fetch poor states.
-                const MAX_HEAP_STEP: usize = 2048;
-                let heap_step = usize::min(
-                    grid.get_cell_count()[0].next_power_of_two() * 8,
-                    MAX_HEAP_STEP,
-                );
-                let mut states = SmallVec::<[State; MAX_HEAP_STEP]>::new();
-                let mut new_states = Vec::with_capacity(heap_step * 26);
+                    // Compute neighbours around the cell in the three directions.
+                    // Discard neighbours that are outside the grid.
+                    let neighbours = itertools::iproduct!(-1..=1, -1..=1, -1..=1)
+                        .map(|v| {
+                            (
+                                cell[0] as isize + v.0,
+                                cell[1] as isize + v.1,
+                                cell[2] as isize + v.2,
+                            )
+                        })
+                        .filter(|&(x, y, z)| {
+                            x >= 0
+                                && y >= 0
+                                && z >= 0
+                                && x < grid.get_cell_count()[0] as isize
+                                && y < grid.get_cell_count()[1] as isize
+                                && z < grid.get_cell_count()[2] as isize
+                        })
+                        .map(|(x, y, z)| [x as usize, y as usize, z as usize]);
 
-                loop {
-                    {
-                        if heap.is_empty() {
-                            break;
-                        }
+                    for neighbour_cell in neighbours {
+                        let neighbour_cell_pos = grid.get_cell_center(&neighbour_cell);
 
-                        states.clear();
-                        new_states.clear();
-                        for _ in 0..heap_step {
-                            if let Some(state) = heap.pop() {
-                                states.push(state);
-                            } else {
-                                break;
+                        let neighbour_cell_idx = grid.get_cell_idx(&neighbour_cell);
+
+                        let distance = match sign_method {
+                            SignMethod::Raycast => {
+                                geo::point_triangle_distance(&neighbour_cell_pos, a, b, c)
                             }
-                        }
-                    }
+                            SignMethod::Normal => {
+                                geo::point_triangle_signed_distance(&neighbour_cell_pos, a, b, c)
+                            }
+                        };
 
-                    for &State { triangle, cell, .. } in &states {
-                        let a = &vertices[triangle.0];
-                        let b = &vertices[triangle.1];
-                        let c = &vertices[triangle.2];
-
-                        // Compute neighbours around the cell in the three directions.
-                        // Discard neighbours that are outside the grid.
-                        let neighbours = itertools::iproduct!(-1..=1, -1..=1, -1..=1)
-                            .map(|v| {
-                                (
-                                    cell[0] as isize + v.0,
-                                    cell[1] as isize + v.1,
-                                    cell[2] as isize + v.2,
-                                )
-                            })
-                            .filter(|&(x, y, z)| {
-                                x >= 0
-                                    && y >= 0
-                                    && z >= 0
-                                    && x < grid.get_cell_count()[0] as isize
-                                    && y < grid.get_cell_count()[1] as isize
-                                    && z < grid.get_cell_count()[2] as isize
-                            })
-                            .map(|(x, y, z)| [x as usize, y as usize, z as usize]);
-
-                        for neighbour_cell in neighbours {
-                            let neighbour_cell_pos = grid.get_cell_center(&neighbour_cell);
-
-                            let neighbour_cell_idx = grid.get_cell_idx(&neighbour_cell);
-
-                            let distance = match sign_method {
-                                SignMethod::Raycast => {
-                                    geo::point_triangle_distance(&neighbour_cell_pos, a, b, c)
-                                }
-                                SignMethod::Normal => geo::point_triangle_signed_distance(
-                                    &neighbour_cell_pos,
-                                    a,
-                                    b,
-                                    c,
-                                ),
+                        let mut stored_distance = distances[neighbour_cell_idx].write();
+                        if compare_distances(distance, *stored_distance).is_lt() {
+                            // New smallest ditance: update the grid and add the cell to the heap.
+                            *stored_distance = distance;
+                            let state = State {
+                                distance: NotNan::new(distance)
+                                    .unwrap_or(unsafe { NotNan::new_unchecked(f32::MAX) }),
+                                triangle,
+                                cell: neighbour_cell,
                             };
 
-                            let mut stored_distance = distances[neighbour_cell_idx].write();
-                            if compare_distances(distance, *stored_distance).is_lt() {
-                                // New smallest ditance: update the grid and add the cell to the heap.
-                                *stored_distance = distance;
-                                let state = State {
-                                    distance: NotNan::new(distance)
-                                        .unwrap_or(unsafe { NotNan::new_unchecked(f32::MAX) }),
-                                    triangle,
-                                    cell: neighbour_cell,
-                                };
-
-                                new_states.push(state);
-                            }
-                        }
-                    }
-
-                    if !new_states.is_empty() {
-                        // We push all new states in one go to avoid acquiring the lock multiple times.
-                        for &state in &new_states {
                             heap.push(state);
                         }
-                        steps.fetch_add(new_states.len() as _, std::sync::atomic::Ordering::SeqCst);
                     }
                 }
             });

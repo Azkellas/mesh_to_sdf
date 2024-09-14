@@ -2194,7 +2194,6 @@ dependencies = [
  "rayon",
  "rmp-serde",
  "serde",
- "smallvec",
  "tempfile",
  "web-time 1.1.0",
 ]
