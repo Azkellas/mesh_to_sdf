@@ -46,19 +46,24 @@ impl Sdf {
             cell_count[2] as usize,
         ];
         let grid = mesh_to_sdf::Grid::from_bounding_box(start_cell, end_cell, ucell_count);
+
+        let now = std::time::Instant::now();
         let data = mesh_to_sdf::generate_grid_sdf(
             vertices,
             mesh_to_sdf::Topology::TriangleList(Some(indices)),
             &grid,
             sign_method,
         );
+        log::info!("SDF generation took: {}ms", now.elapsed().as_millis());
 
+        let now = std::time::Instant::now();
         // sort cells by their distance to surface.
         // used in the voxel render pass to only draw valid cells.
         let ordered_indices = (0..data.len())
             .sorted_by(|i, j| data[*i].total_cmp(&data[*j]))
             .map(|i| i as u32)
             .collect_vec();
+        log::info!("voxel generation took: {}ms", now.elapsed().as_millis());
 
         let cell_size = grid.get_cell_size();
         let first_cell = grid.get_first_cell();

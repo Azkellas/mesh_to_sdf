@@ -12,7 +12,12 @@ pub fn triangle_bounding_box<V: Point>(a: &V, b: &V, c: &V) -> (V, V) {
         f32::max(a.y(), f32::max(b.y(), c.y())),
         f32::max(a.z(), f32::max(b.z(), c.z())),
     );
-    (min, max)
+
+    // We add a small epsilon to the max and subtract a small epsilon from the min to avoid
+    // floating point errors in the bvh aabb intersection tests and make sure the aabb has a volume.
+    const EPSILONF: f32 = 0.0001;
+    let epsilon = V::new(EPSILONF, EPSILONF, EPSILONF);
+    (min.sub(&epsilon), max.add(&epsilon))
 }
 
 /// Compute the distance between a point and a triangle.

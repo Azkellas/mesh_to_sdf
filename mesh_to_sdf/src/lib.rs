@@ -577,18 +577,28 @@ where
     // - if we're in Raycast mode, we compute the intersections with the triangles to determine the sign.
     //
     // - return the grid.
-    let mut distances = Vec::with_capacity(grid.get_total_cell_count());
-    let mut preheap = Vec::with_capacity(grid.get_total_cell_count());
 
+    // Creating a lot of RwLocks is slow, we parallelize the creation.
+    // TODO: this is slow because the threads are too short we need to use chunks.
+    // let distances = (0..grid.get_total_cell_count())
+    //     .into_par_iter()
+    //     .map(|_| RwLock::new(f32::MAX))
+    //     .collect::<Vec<RwLock<f32>>>();
+
+    // let preheap = (0..grid.get_total_cell_count())
+    //     .into_par_iter()
+    //     .map(|_| RwLock::new(((0, 0, 0), f32::MAX)))
+    //     .collect::<Vec<RwLock<((usize, usize, usize), f32)>>>();
+
+    let mut preheap = Vec::with_capacity(grid.get_total_cell_count());
     for _ in 0..grid.get_total_cell_count() {
-        distances.push(RwLock::new(f32::MAX));
         preheap.push(RwLock::new(((0, 0, 0), f32::MAX)));
     }
 
     // debug step counter.
     let steps = AtomicU32::new(0);
 
-    let mut now = std::time::Instant::now();
+    let mut now = web_time::Instant::now();
 
     // init heap.
     // (*Topology::get_triangles(vertices, &indices)).par_bridge() is twice faster than sequential
@@ -664,19 +674,28 @@ where
         }
     });
 
+    let mut distances = Vec::with_capacity(grid.get_total_cell_count());
+    for _ in 0..grid.get_total_cell_count() {
+        distances.push(RwLock::new(f32::MAX));
+    }
+
     // First step is done: we have the closest triangle for each cell.
     // And a bit more since a triangle might erase the distance of another triangle later in the process.
-    let mut heap = preheap
+    let heap = preheap
         .iter()
         .map(|m| m.read())
         .map(|g| *g)
         .enumerate()
+        .map(|element| {
+            // assert_eq!(distances.len(), element.0);
+            // distances.push(RwLock::new(element.1 .1));
+            element
+        })
         .filter(|(_, (_, d))| *d < f32::MAX)
         .map(|(cell_idx, (triangle, distance))| {
             let cell = grid.get_cell_integer_coordinates(cell_idx);
 
             *distances[cell_idx].write() = distance;
-
             State {
                 distance: NotNan::new(distance)
                     .unwrap_or(unsafe { NotNan::new_unchecked(f32::MAX) }),
@@ -685,8 +704,8 @@ where
                 cell,
             }
         })
+        .sorted_unstable()
         .collect::<Vec<_>>();
-    heap.sort_unstable();
 
     log::info!(
         "[generate_grid_sdf] init steps: {} in {}ms",
@@ -694,7 +713,7 @@ where
         now.elapsed().as_millis()
     );
     steps.store(0, std::sync::atomic::Ordering::SeqCst);
-    now = std::time::Instant::now();
+    now = web_time::Instant::now();
 
     // The most expensive part of the propagation step is gettings the next point of the heap.
     // So the combo (triangle, cell) that has the smallest distance.
@@ -719,6 +738,7 @@ where
             let distances = &distances;
 
             s.spawn(move || {
+                // TODO: I dont neeed the heap steps anymore!!
                 // Second step: propagate the distance to the neighbours.
 
                 // This is a compromise. The more we take, the less we need to acquire the heap lock
@@ -823,123 +843,130 @@ where
         steps.load(std::sync::atomic::Ordering::SeqCst),
         now.elapsed().as_millis()
     );
-    now = std::time::Instant::now();
+    now = web_time::Instant::now();
 
     let mut distances = distances.iter().map(|d| *d.read()).collect_vec();
 
     if sign_method == SignMethod::Raycast {
         // `ray_triangle_intersection` tests for direction [1.0, 0.0, 0.0]
-        // The idea here is to tests for all cells (x=0, y, z) and triangle.
-        // To optimize, we first iterate on triangles and for each triangle,
-        // only consider cells that are in its bounding box.
-        // If there is no intersection, don't consider the triangle.
-        // If there is one with distance `t`,
+        // The idea here is to tests for all cells (x=0, y, z) and triangle via a bvh
+        // For each triangle with a n intersection at distance `t`,
         // each cell before `t` intersects the triangle, each cell after `t` does not.
         // Finally, count the number of intersections for each cell.
         // If the number is odd, the cell is inside the mesh.
         // If the number is even, the cell is outside the mesh.
-        // Since this is so inexpensive (n^2 vs n^3), we can afford to do it in the three directions.
-        let mut intersections = vec![[0, 0, 0]; grid.get_total_cell_count()];
-        let mut raycasts_done = 0;
-        for triangle in Topology::get_triangles(vertices, &indices) {
-            let a = &vertices[triangle.0];
-            let b = &vertices[triangle.1];
-            let c = &vertices[triangle.2];
-            let bounding_box = geo::triangle_bounding_box(a, b, c);
 
-            // The bounding box is snapped to the grid.
-            let min_cell = match grid.snap_point_to_grid(&bounding_box.0) {
-                SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
-            };
-            let max_cell = match grid.snap_point_to_grid(&bounding_box.1) {
-                SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
-            };
+        let mut bvh_nodes = triangles_raw
+            .iter()
+            .map(|&triangle| BvhNode {
+                vertex_indices: triangle,
+                node_index: 0,
+                bounding_box: geo::triangle_bounding_box(
+                    &vertices[triangle.0],
+                    &vertices[triangle.1],
+                    &vertices[triangle.2],
+                ),
+            })
+            .collect_vec();
 
-            // x.
-            for y in min_cell[1]..=max_cell[1] {
-                for z in min_cell[2]..=max_cell[2] {
-                    let cell = [0, y, z];
-                    let cell_pos = grid.get_cell_center(&cell);
-                    raycasts_done += 1;
-                    if let Some(distance) = geo::ray_triangle_intersection_aligned(
-                        &cell_pos,
-                        [a, b, c],
-                        geo::GridAlign::X,
-                    ) {
-                        let cell_count = distance / grid.get_cell_size().x();
-                        let cell_count =
-                            (cell_count.floor() as usize).min(grid.get_cell_count()[0] - 1);
-                        for x in 0..=cell_count {
-                            assert!(x < grid.get_cell_count()[0]);
-                            let cell = [x, y, z];
-                            let cell_idx = grid.get_cell_idx(&cell);
-                            if cell_idx < intersections.len() {
-                                intersections[cell_idx][0] += 1;
-                            }
-                        }
-                    }
-                }
-            }
+        let bvh = Bvh::build_par(&mut bvh_nodes);
 
-            // y.
-            for x in min_cell[0]..=max_cell[0] {
-                for z in min_cell[2]..=max_cell[2] {
-                    let cell = [x, 0, z];
-                    let cell_pos = grid.get_cell_center(&cell);
-                    raycasts_done += 1;
-                    if let Some(distance) = geo::ray_triangle_intersection_aligned(
-                        &cell_pos,
-                        [a, b, c],
-                        geo::GridAlign::Y,
-                    ) {
-                        let cell_count = distance / grid.get_cell_size().y();
-                        let cell_count =
-                            (cell_count.floor() as usize).min(grid.get_cell_count()[1] - 1);
-                        for y in 0..=cell_count {
-                            assert!(y < grid.get_cell_count()[1]);
-                            let cell = [x, y, z];
-                            let cell_idx = grid.get_cell_idx(&cell);
-                            if cell_idx < intersections.len() {
-                                intersections[cell_idx][1] += 1;
-                            }
-                        }
-                    }
-                }
-            }
+        let mut intersections = Vec::with_capacity(grid.get_total_cell_count());
+        for _ in 0..grid.get_total_cell_count() {
+            intersections.push([AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)]);
+        }
 
-            // z.
-            for x in min_cell[0]..=max_cell[0] {
-                for y in min_cell[1]..=max_cell[1] {
-                    let cell = [x, y, 0];
-                    let cell_pos = grid.get_cell_center(&cell);
-                    raycasts_done += 1;
-                    if let Some(distance) = geo::ray_triangle_intersection_aligned(
-                        &cell_pos,
-                        [a, b, c],
-                        geo::GridAlign::Z,
-                    ) {
-                        let cell_count = distance / grid.get_cell_size().z();
-                        let cell_count =
-                            (cell_count.floor() as usize).min(grid.get_cell_count()[2] - 1);
-                        for z in 0..=cell_count {
-                            assert!(z < grid.get_cell_count()[2]);
-                            let cell = [x, y, z];
-                            let cell_idx = grid.get_cell_idx(&cell);
-                            if cell_idx < intersections.len() {
-                                intersections[cell_idx][2] += 1;
-                            }
-                        }
-                    }
-                }
+        struct RaycastData {
+            direction: geo::GridAlign,
+            start_cell: [usize; 3],
+        }
+
+        let gx = grid.get_cell_count()[0];
+        let gy = grid.get_cell_count()[1];
+        let gz = grid.get_cell_count()[2];
+
+        let mut raycasts_to_do = Vec::with_capacity(gx * gy + gx * gz + gy * gz);
+
+        // x.
+        for y in 0..grid.get_cell_count()[1] {
+            for z in 0..grid.get_cell_count()[2] {
+                raycasts_to_do.push(RaycastData {
+                    direction: geo::GridAlign::X,
+                    start_cell: [0, y, z],
+                });
             }
         }
+        // y.
+        for x in 0..grid.get_cell_count()[0] {
+            for z in 0..grid.get_cell_count()[2] {
+                raycasts_to_do.push(RaycastData {
+                    direction: geo::GridAlign::Y,
+                    start_cell: [x, 0, z],
+                });
+            }
+        }
+        // z.
+        for x in 0..grid.get_cell_count()[0] {
+            for y in 0..grid.get_cell_count()[1] {
+                raycasts_to_do.push(RaycastData {
+                    direction: geo::GridAlign::Z,
+                    start_cell: [x, y, 0],
+                });
+            }
+        }
+        let raycasts_done = AtomicU32::new(0);
+
+        raycasts_to_do.par_iter().for_each(|data| {
+            let cell_pos = grid.get_cell_center(&data.start_cell);
+            let ray_dir = match data.direction {
+                geo::GridAlign::X => nalgebra::Vector3::new(1.0, 0.0, 0.0),
+                geo::GridAlign::Y => nalgebra::Vector3::new(0.0, 1.0, 0.0),
+                geo::GridAlign::Z => nalgebra::Vector3::new(0.0, 0.0, 1.0),
+            };
+
+            let ray = bvh::ray::Ray::new(
+                nalgebra::Point3::new(cell_pos.x(), cell_pos.y(), cell_pos.z()),
+                ray_dir,
+            );
+            let candidates = bvh.traverse(&ray, &bvh_nodes);
+            raycasts_done.fetch_add(
+                candidates.len() as u32,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            for candidate in candidates {
+                let a = &vertices[candidate.vertex_indices.0];
+                let b = &vertices[candidate.vertex_indices.1];
+                let c = &vertices[candidate.vertex_indices.2];
+
+                if let Some(distance) =
+                    geo::ray_triangle_intersection_aligned(&cell_pos, [a, b, c], data.direction)
+                {
+                    let direction_index = data.direction as usize;
+                    let cell_count = distance / grid.get_cell_size().get(direction_index);
+                    let cell_count = (cell_count.floor() as usize)
+                        .min(grid.get_cell_count()[direction_index] - 1);
+                    let mut cell = data.start_cell;
+                    for index in 0..=cell_count {
+                        cell[direction_index] = index;
+                        let cell_idx = grid.get_cell_idx(&cell);
+                        intersections[cell_idx][direction_index]
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    }
+                }
+            }
+        });
+
         for (i, distance) in distances.iter_mut().enumerate() {
             // distance is always positive here since we didn't check the normal.
             // We decide based on the parity of the intersections.
             // And a best of 3.
             // This helps when the mesh is not watertight
             // and to compensate the discrete nature of the grid.
-            let inter = intersections[i];
+            let inter = [
+                intersections[i][0].load(std::sync::atomic::Ordering::SeqCst),
+                intersections[i][1].load(std::sync::atomic::Ordering::SeqCst),
+                intersections[i][2].load(std::sync::atomic::Ordering::SeqCst),
+            ];
             match (inter[0] % 2, inter[1] % 2, inter[2] % 2) {
                 // if at least two are odd, the cell is deeemed inside.
                 (1, 1, _) | (1, _, 1) | (_, 1, 1) => *distance = -*distance,
@@ -949,7 +976,7 @@ where
         }
         log::info!(
             "[generate_grid_sdf] raycasts done: {} in {}ms",
-            raycasts_done,
+            raycasts_done.load(std::sync::atomic::Ordering::SeqCst),
             now.elapsed().as_millis()
         );
     }
@@ -1298,8 +1325,8 @@ mod tests {
         for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
             assert!(
                 (sdf - grid_sdf).abs() < 0.01,
-                "i: {}: {} {}",
-                i,
+                "cell: {:?}: {} {}",
+                grid.get_cell_integer_coordinates(i),
                 sdf,
                 grid_sdf
             );
