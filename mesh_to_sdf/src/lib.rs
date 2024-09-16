@@ -119,10 +119,10 @@ use std::{boxed::Box, cmp::Ordering};
 use bvh::{bounding_hierarchy::BoundingHierarchy, bvh::Bvh};
 use bvh_ext::BvhDistance;
 use itertools::Itertools;
-use ordered_float::NotNan;
 use rayon::prelude::*;
 
 mod bvh_ext;
+mod generate;
 mod geo;
 mod grid;
 mod point;
@@ -130,6 +130,7 @@ mod point;
 #[cfg(feature = "serde")]
 mod serde;
 
+pub use generate::grid::generate_grid_sdf;
 pub use grid::{Grid, SnapResult};
 pub use point::Point;
 
@@ -137,6 +138,7 @@ pub use point::Point;
 pub use serde::*;
 
 /// Mesh Topology: how indices are stored.
+#[derive(Copy, Clone)]
 pub enum Topology<'a, I>
 where
     // I should be a u32 or u16
@@ -161,9 +163,9 @@ where
     /// Compute the triangles list
     /// Returns an iterator of tuples of 3 indices representing a triangle.
     fn get_triangles<V>(
-        vertices: &[V],
-        indices: &'a Topology<I>,
-    ) -> Box<dyn Iterator<Item = (usize, usize, usize)> + 'a>
+        vertices: &'a [V],
+        indices: Topology<'a, I>,
+    ) -> Box<dyn Iterator<Item = (usize, usize, usize)> + Send + 'a>
     where
         V: Point,
         I: Copy + Into<u32> + Sync + Send,
@@ -331,7 +333,7 @@ where
     V: Point,
     I: Copy + Into<u32> + Sync + Send,
 {
-    let mut bvh_nodes = Topology::get_triangles(vertices, &indices)
+    let mut bvh_nodes = Topology::get_triangles(vertices, indices)
         .map(|triangle| BvhNode {
             vertex_indices: triangle,
             node_index: 0,
@@ -421,7 +423,7 @@ where
 ///
 /// Returns a vector of signed distances.
 /// Queries outside the mesh will have a positive distance, and queries inside the mesh will have a negative distance.
-pub fn generate_sdf_default<V, I>(
+fn generate_sdf_default<V, I>(
     vertices: &[V],
     indices: Topology<I>,
     query_points: &[V],
@@ -440,7 +442,7 @@ where
     query_points
         .par_iter()
         .map(|query| {
-            Topology::get_triangles(vertices, &indices)
+            Topology::get_triangles(vertices, indices)
                 .map(|(i, j, k)| (&vertices[i], &vertices[j], &vertices[k]))
                 .map(|(a, b, c)| match sign_method {
                     // Raycast: returns (distance, ray_intersection)
@@ -482,356 +484,6 @@ where
             }
         })
         .collect()
-}
-
-/// State for the binary heap.
-/// Used in [`generate_grid_sdf`].
-#[derive(Copy, Clone, Eq, PartialEq)]
-struct State {
-    // signed distance to mesh.
-    distance: NotNan<f32>,
-    // current cell in grid.
-    cell: [usize; 3],
-    // triangle that generated the distance.
-    triangle: (usize, usize, usize),
-}
-
-impl Ord for State {
-    /// We compare by distance first, then use cell and triangles as tie-breakers.
-    /// Only the distance is important to reduce the number of steps.
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        compare_distances(other.distance.into_inner(), self.distance.into_inner())
-            .then_with(|| self.cell.cmp(&other.cell))
-            .then_with(|| self.triangle.cmp(&other.triangle))
-    }
-}
-impl PartialOrd for State {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-/// Generate a signed distance field from a mesh for a grid.
-/// See [Grid] for more details on how to create and use a grid.
-///
-/// Returns a vector of signed distances.
-/// Cells outside the mesh will have a positive distance, and cells inside the mesh will have a negative distance.
-/// ```
-/// use mesh_to_sdf::{generate_grid_sdf, SignMethod, Topology, Grid};
-///
-/// let vertices: Vec<[f32; 3]> = vec![[0.5, 1.5, 0.5], [1., 2., 3.], [1., 3., 4.]];
-/// let indices: Vec<u32> = vec![0, 1, 2];
-///
-/// let bounding_box_min = [0., 0., 0.];
-/// let bounding_box_max = [10., 10., 10.];
-/// let cell_count = [10, 10, 10];
-///
-/// let grid = Grid::from_bounding_box(&bounding_box_min, &bounding_box_max, cell_count);
-///
-/// let sdf: Vec<f32> = generate_grid_sdf(
-///     &vertices,
-///     Topology::TriangleList(Some(&indices)),
-///     &grid,
-///     SignMethod::Raycast, // How the sign is computed.
-/// );                       // Raycast is robust but requires the mesh to be watertight.
-///
-/// for x in 0..cell_count[0] {
-///     for y in 0..cell_count[1] {
-///         for z in 0..cell_count[2] {
-///             let index = grid.get_cell_idx(&[x, y, z]);
-///             log::info!("Distance to cell [{}, {}, {}]: {}", x, y, z, sdf[index as usize]);
-///         }
-///     }
-/// }
-/// # assert_eq!(sdf[0], 1.0);
-/// ```
-pub fn generate_grid_sdf<V, I>(
-    vertices: &[V],
-    indices: Topology<I>,
-    grid: &Grid<V>,
-    sign_method: SignMethod,
-) -> Vec<f32>
-where
-    V: Point,
-    I: Copy + Into<u32> + Sync + Send,
-{
-    // The generation works in the following way:
-    // - init the grid with f32::MAX
-    // - for each triangle in the mesh:
-    //    - compute the bounding box of the triangle
-    //    - for each cell in the bounding box:
-    //        - compute the distance to the triangle
-    //        - if the distance is smaller than the current distance in the grid, update the grid
-    //          and add the cell to the heap.
-    //          To avoid having multiple triangles for a cell in the resulting heap, we use a pre-heap grid first.
-    //
-    // - while the heap is not empty:
-    //    - pop the cell with the smallest distance (wrt sign)
-    //    - for each neighbour cell:
-    //        - compute the distance to the triangle
-    //        - if the distance is smaller than the current distance in the grid, update the grid
-    //          and add the cell to the heap.
-    //
-    // - if we're in Raycast mode, we compute the intersections with the triangles to determine the sign.
-    //
-    // - return the grid.
-    let mut distances = vec![f32::MAX; grid.get_total_cell_count()];
-
-    let mut preheap = vec![((0, 0, 0), f32::MAX); grid.get_total_cell_count()];
-
-    // debug step counter.
-    let mut steps = 0;
-
-    // init heap.
-    Topology::get_triangles(vertices, &indices).for_each(|triangle| {
-        let a = &vertices[triangle.0];
-        let b = &vertices[triangle.1];
-        let c = &vertices[triangle.2];
-
-        // TODO: We can reduce the number of point here by following the triangle "slope" instead of the bounding box.
-        // Like a bresenham algorithm but in 3D. Not sure how to do it though.
-        // This would help a lot for large triangles.
-        // But large triangles means not a lot of them so it should be ok without this optimisation.
-        let bounding_box = geo::triangle_bounding_box(a, b, c);
-
-        // The bounding box is snapped to the grid.
-        let min_cell = match grid.snap_point_to_grid(&bounding_box.0) {
-            SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
-        };
-        let max_cell = match grid.snap_point_to_grid(&bounding_box.1) {
-            SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
-        };
-        // Add one to max_cell and remove one to min_cell to check nearby cells.
-        let min_cell = [
-            if min_cell[0] == 0 { 0 } else { min_cell[0] - 1 },
-            if min_cell[1] == 0 { 0 } else { min_cell[1] - 1 },
-            if min_cell[2] == 0 { 0 } else { min_cell[2] - 1 },
-        ];
-        let max_cell = [
-            (max_cell[0] + 1).min(grid.get_cell_count()[0] - 1),
-            (max_cell[1] + 1).min(grid.get_cell_count()[1] - 1),
-            (max_cell[2] + 1).min(grid.get_cell_count()[2] - 1),
-        ];
-
-        // For each cell in the bounding box.
-        for cell in itertools::iproduct!(
-            min_cell[0]..=max_cell[0],
-            min_cell[1]..=max_cell[1],
-            min_cell[2]..=max_cell[2]
-        ) {
-            let cell = [cell.0, cell.1, cell.2];
-            let cell_idx = grid.get_cell_idx(&cell);
-
-            let cell_pos = grid.get_cell_center(&cell);
-
-            let distance = match sign_method {
-                SignMethod::Raycast => geo::point_triangle_distance(&cell_pos, a, b, c),
-                SignMethod::Normal => geo::point_triangle_signed_distance(&cell_pos, a, b, c),
-            };
-            if compare_distances(distance, distances[cell_idx]).is_lt() {
-                // New smallest ditance: update the grid and add the cell to the heap.
-                steps += 1;
-
-                preheap[cell_idx] = (triangle, distance);
-                distances[cell_idx] = distance;
-            }
-        }
-    });
-    // First step is done: we have the closest triangle for each cell.
-    // And a bit more since a triangle might erase the distance of another triangle later in the process.
-
-    let mut heap = preheap
-        .into_iter()
-        .enumerate()
-        .filter(|(_, (_, d))| *d < f32::MAX)
-        .map(|(cell_idx, (triangle, distance))| {
-            let cell = grid.get_cell_integer_coordinates(cell_idx);
-            State {
-                distance: NotNan::new(distance)
-                    .unwrap_or(unsafe { NotNan::new_unchecked(f32::MAX) }),
-
-                triangle,
-                cell,
-            }
-        })
-        .collect::<std::collections::BinaryHeap<_>>();
-
-    log::info!("[generate_grid_sdf] init steps: {}", steps);
-    steps = 0;
-
-    // Second step: propagate the distance to the neighbours.
-    while let Some(State { triangle, cell, .. }) = heap.pop() {
-        let a = &vertices[triangle.0];
-        let b = &vertices[triangle.1];
-        let c = &vertices[triangle.2];
-
-        // Compute neighbours around the cell in the three directions.
-        // Discard neighbours that are outside the grid.
-        let neighbours = itertools::iproduct!(-1..=1, -1..=1, -1..=1)
-            .map(|v| {
-                (
-                    cell[0] as isize + v.0,
-                    cell[1] as isize + v.1,
-                    cell[2] as isize + v.2,
-                )
-            })
-            .filter(|&(x, y, z)| {
-                x >= 0
-                    && y >= 0
-                    && z >= 0
-                    && x < grid.get_cell_count()[0] as isize
-                    && y < grid.get_cell_count()[1] as isize
-                    && z < grid.get_cell_count()[2] as isize
-            })
-            .map(|(x, y, z)| [x as usize, y as usize, z as usize]);
-
-        for neighbour_cell in neighbours {
-            let neighbour_cell_pos = grid.get_cell_center(&neighbour_cell);
-
-            let neighbour_cell_idx = grid.get_cell_idx(&neighbour_cell);
-
-            let distance = match sign_method {
-                SignMethod::Raycast => geo::point_triangle_distance(&neighbour_cell_pos, a, b, c),
-                SignMethod::Normal => {
-                    geo::point_triangle_signed_distance(&neighbour_cell_pos, a, b, c)
-                }
-            };
-
-            if compare_distances(distance, distances[neighbour_cell_idx]).is_lt() {
-                // New smallest ditance: update the grid and add the cell to the heap.
-                steps += 1;
-
-                distances[neighbour_cell_idx] = distance;
-                let state = State {
-                    distance: NotNan::new(distance)
-                        .unwrap_or(unsafe { NotNan::new_unchecked(f32::MAX) }),
-                    triangle,
-                    cell: neighbour_cell,
-                };
-                heap.push(state);
-            }
-        }
-    }
-    log::info!("[generate_grid_sdf] propagation steps: {}", steps);
-
-    if sign_method == SignMethod::Raycast {
-        // `ray_triangle_intersection` tests for direction [1.0, 0.0, 0.0]
-        // The idea here is to tests for all cells (x=0, y, z) and triangle.
-        // To optimize, we first iterate on triangles and for each triangle,
-        // only consider cells that are in its bounding box.
-        // If there is no intersection, don't consider the triangle.
-        // If there is one with distance `t`,
-        // each cell before `t` intersects the triangle, each cell after `t` does not.
-        // Finally, count the number of intersections for each cell.
-        // If the number is odd, the cell is inside the mesh.
-        // If the number is even, the cell is outside the mesh.
-        // Since this is so inexpensive (n^2 vs n^3), we can afford to do it in the three directions.
-        let mut intersections = vec![[0, 0, 0]; grid.get_total_cell_count()];
-        let mut raycasts_done = 0;
-        for triangle in Topology::get_triangles(vertices, &indices) {
-            let a = &vertices[triangle.0];
-            let b = &vertices[triangle.1];
-            let c = &vertices[triangle.2];
-            let bounding_box = geo::triangle_bounding_box(a, b, c);
-
-            // The bounding box is snapped to the grid.
-            let min_cell = match grid.snap_point_to_grid(&bounding_box.0) {
-                SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
-            };
-            let max_cell = match grid.snap_point_to_grid(&bounding_box.1) {
-                SnapResult::Inside(cell) | SnapResult::Outside(cell) => cell,
-            };
-
-            // x.
-            for y in min_cell[1]..=max_cell[1] {
-                for z in min_cell[2]..=max_cell[2] {
-                    let cell = [0, y, z];
-                    let cell_pos = grid.get_cell_center(&cell);
-                    raycasts_done += 1;
-                    if let Some(distance) = geo::ray_triangle_intersection_aligned(
-                        &cell_pos,
-                        [a, b, c],
-                        geo::GridAlign::X,
-                    ) {
-                        let cell_count = distance / grid.get_cell_size().x();
-                        let cell_count = cell_count.floor() as usize;
-                        for x in 0..=cell_count {
-                            let cell = [x, y, z];
-                            let cell_idx = grid.get_cell_idx(&cell);
-                            if cell_idx < intersections.len() {
-                                intersections[cell_idx][0] += 1;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // y.
-            for x in min_cell[0]..=max_cell[0] {
-                for z in min_cell[2]..=max_cell[2] {
-                    let cell = [x, 0, z];
-                    let cell_pos = grid.get_cell_center(&cell);
-                    raycasts_done += 1;
-                    if let Some(distance) = geo::ray_triangle_intersection_aligned(
-                        &cell_pos,
-                        [a, b, c],
-                        geo::GridAlign::Y,
-                    ) {
-                        let cell_count = distance / grid.get_cell_size().y();
-                        let cell_count = cell_count.floor() as usize;
-                        for y in 0..=cell_count {
-                            let cell = [x, y, z];
-                            let cell_idx = grid.get_cell_idx(&cell);
-                            if cell_idx < intersections.len() {
-                                intersections[cell_idx][1] += 1;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // z.
-            for x in min_cell[0]..=max_cell[0] {
-                for y in min_cell[1]..=max_cell[1] {
-                    let cell = [x, y, 0];
-                    let cell_pos = grid.get_cell_center(&cell);
-                    raycasts_done += 1;
-                    if let Some(distance) = geo::ray_triangle_intersection_aligned(
-                        &cell_pos,
-                        [a, b, c],
-                        geo::GridAlign::Z,
-                    ) {
-                        let cell_count = distance / grid.get_cell_size().z();
-                        let cell_count = cell_count.floor() as usize;
-                        for z in 0..=cell_count {
-                            let cell = [x, y, z];
-                            let cell_idx = grid.get_cell_idx(&cell);
-                            if cell_idx < intersections.len() {
-                                intersections[cell_idx][2] += 1;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        for (i, distance) in distances.iter_mut().enumerate() {
-            // distance is always positive here since we didn't check the normal.
-            // We decide based on the parity of the intersections.
-            // And a best of 3.
-            // This helps when the mesh is not watertight
-            // and to compensate the discrete nature of the grid.
-            let inter = intersections[i];
-            match (inter[0] % 2, inter[1] % 2, inter[2] % 2) {
-                // if at least two are odd, the cell is deeemed inside.
-                (1, 1, _) | (1, _, 1) | (_, 1, 1) => *distance = -*distance,
-                // conversely, if at least two are even, the cell is deeemed outside.
-                _ => {}
-            }
-        }
-        log::info!("[generate_grid_sdf] raycasts done: {}", raycasts_done);
-    }
-
-    distances
 }
 
 #[cfg(test)]
@@ -900,185 +552,6 @@ mod tests {
         // Test against generate_sdf
         for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
             assert_eq!(sdf, grid_sdf, "i: {}", i);
-        }
-    }
-
-    /// Test continuity.
-    /// Only valid for watertight meshes and Raycast method.
-    #[test]
-    fn test_grid_continuity() {
-        let model = &easy_gltf::load("assets/ferris3d.glb").unwrap()[0].models[0];
-        let vertices = model.vertices().iter().map(|v| v.position).collect_vec();
-        let indices = model.indices().unwrap();
-
-        let bbox_min = vertices.iter().fold(
-            cgmath::Vector3::new(f32::MAX, f32::MAX, f32::MAX),
-            |acc, v| cgmath::Vector3 {
-                x: acc.x.min(v.x),
-                y: acc.y.min(v.y),
-                z: acc.z.min(v.z),
-            },
-        );
-        let bbox_max = vertices.iter().fold(
-            cgmath::Vector3::new(-f32::MAX, -f32::MAX, -f32::MAX),
-            |acc, v| cgmath::Vector3 {
-                x: acc.x.max(v.x),
-                y: acc.y.max(v.y),
-                z: acc.z.max(v.z),
-            },
-        );
-
-        let extend = 0.2 * (bbox_max - bbox_min);
-        let bbox_min = bbox_min - extend;
-        let bbox_max = bbox_max + extend;
-
-        // Most of the time is spent reading the file, so we can afford a large grid.
-        let grid = Grid::from_bounding_box(&bbox_min, &bbox_max, [32, 32, 32]);
-
-        let sdf = generate_grid_sdf(
-            &vertices,
-            crate::Topology::TriangleList(Some(indices)),
-            &grid,
-            SignMethod::Raycast,
-        );
-
-        let test_continuity = |distance: f32, neigh_distance: f32, size: f32| {
-            // make sure the unsigned distance respects the triangle inequality.
-            let valid_unsigned = (distance.abs() - neigh_distance.abs()).abs() <= size;
-            // since the grid is discrete, we cannot support the triangle inequality for near the surface.
-            // instead we make sure if there is a sign change, the distance is smaller than the cell size
-            // meaning the surface is somewhere around (hopefully between) the two cells.
-            // This test is not perfect and might fail for some cases.
-            let valid_signed = match (distance * neigh_distance).signum() < 0.0 {
-                true => distance.abs() <= size && neigh_distance.abs() <= size,
-                false => true,
-            };
-            assert!(
-                valid_unsigned && valid_signed,
-                "({} {}) <= {}",
-                distance,
-                neigh_distance,
-                size
-            );
-        };
-
-        let cell_size = grid.get_cell_size();
-        for x in 0..grid.get_cell_count()[0] - 1 {
-            for y in 0..grid.get_cell_count()[1] - 1 {
-                for z in 0..grid.get_cell_count()[2] - 1 {
-                    let index = grid.get_cell_idx(&[x, y, z]);
-
-                    let distance = sdf[index];
-
-                    let neigh = grid.get_cell_idx(&[x + 1, y, z]);
-                    let neigh_distance = sdf[neigh];
-                    test_continuity(distance, neigh_distance, cell_size.x());
-
-                    let neigh = grid.get_cell_idx(&[x, y + 1, z]);
-                    let neigh_distance = sdf[neigh];
-                    test_continuity(distance, neigh_distance, cell_size.y());
-
-                    let neigh = grid.get_cell_idx(&[x, y, z + 1]);
-                    let neigh_distance = sdf[neigh];
-                    test_continuity(distance, neigh_distance, cell_size.z());
-                }
-            }
-        }
-    }
-
-    // Make sure the raycasts on grid do not access out of bounds cells.
-    #[test]
-    fn test_grid_raycast() {
-        let model = &easy_gltf::load("assets/ferris3d.glb").unwrap()[0].models[0];
-        let vertices = model.vertices().iter().map(|v| v.position).collect_vec();
-        let indices = model.indices().unwrap();
-
-        let bbox_min = vertices.iter().fold(
-            cgmath::Vector3::new(f32::MAX, f32::MAX, f32::MAX),
-            |acc, v| cgmath::Vector3 {
-                x: acc.x.min(v.x),
-                y: acc.y.min(v.y),
-                z: acc.z.min(v.z),
-            },
-        );
-        let mut bbox_max = vertices.iter().fold(
-            cgmath::Vector3::new(-f32::MAX, -f32::MAX, -f32::MAX),
-            |acc, v| cgmath::Vector3 {
-                x: acc.x.max(v.x),
-                y: acc.y.max(v.y),
-                z: acc.z.max(v.z),
-            },
-        );
-
-        bbox_max *= 0.5;
-
-        let grid = Grid::from_bounding_box(&bbox_min, &bbox_max, [32, 32, 32]);
-
-        generate_grid_sdf(
-            &vertices,
-            crate::Topology::TriangleList(Some(&indices)),
-            &grid,
-            SignMethod::Raycast,
-        );
-    }
-
-    #[test]
-    fn test_topology() {
-        let grid = Grid::from_bounding_box(&[0., 0., 0.], &[5., 5., 5.], [25, 25, 25]);
-
-        let v0 = [0., 1., 0.];
-        let v1 = [1., 2., 3.];
-        let v2 = [1., 3., 4.];
-        let v3 = [2., 0., 0.];
-        // triangles: 012 123 230
-
-        let triangle_list_indices = {
-            let vertices: Vec<[f32; 3]> = vec![v0, v1, v2, v3];
-            let indices: Vec<u32> = vec![0, 1, 2, 1, 2, 3, 2, 3, 0];
-            generate_grid_sdf(
-                &vertices,
-                crate::Topology::TriangleList(Some(&indices)),
-                &grid,
-                SignMethod::Normal,
-            )
-        };
-
-        let triangle_list_none = {
-            let vertices: Vec<[f32; 3]> = vec![v0, v1, v2, v1, v2, v3, v2, v3, v0];
-            generate_grid_sdf(
-                &vertices,
-                Topology::TriangleList::<u32>(None),
-                &grid,
-                SignMethod::Normal,
-            )
-        };
-
-        let triangle_strip_indices = {
-            let vertices: Vec<[f32; 3]> = vec![v0, v1, v2, v3];
-            let indices: Vec<u32> = vec![0, 1, 2, 3, 0];
-            generate_grid_sdf(
-                &vertices,
-                Topology::TriangleStrip(Some(&indices)),
-                &grid,
-                SignMethod::Normal,
-            )
-        };
-
-        let triangle_strip_none = {
-            let vertices: Vec<[f32; 3]> = vec![v0, v1, v2, v3, v0];
-            generate_grid_sdf(
-                &vertices,
-                Topology::TriangleStrip::<u32>(None),
-                &grid,
-                SignMethod::Normal,
-            )
-        };
-
-        let cell_count = grid.get_total_cell_count();
-        for i in 0..cell_count {
-            assert_eq!(triangle_list_indices[i], triangle_list_none[i]);
-            assert_eq!(triangle_list_indices[i], triangle_strip_indices[i]);
-            assert_eq!(triangle_list_indices[i], triangle_strip_none[i]);
         }
     }
 
@@ -1169,11 +642,14 @@ mod tests {
         );
 
         // Test against generate_sdf
+        // TODO: sometimes fails
+        // thread 'tests::test_generate_bvh_big' panicked at mesh_to_sdf\src\lib.rs:1232:13:
+        // i: 17435: 0.0076956493 0.030284861
         for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
             assert!(
                 (sdf - grid_sdf).abs() < 0.01,
-                "i: {}: {} {}",
-                i,
+                "cell: {:?}: {} {}",
+                grid.get_cell_integer_coordinates(i),
                 sdf,
                 grid_sdf
             );
@@ -1228,6 +704,10 @@ mod tests {
 
         // Test against generate_sdf
         for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
+            // TODO: sometimes fails
+            // thread 'tests::test_generate_bvh_big' panicked at mesh_to_sdf\src\lib.rs:1232:13:
+            // i: 17435: 0.0076956493 0.030284861
+            // i: 1742: 0.09342232 -0.094851956
             assert!(
                 (sdf - grid_sdf).abs() < 0.01,
                 "i: {}: {} {}",

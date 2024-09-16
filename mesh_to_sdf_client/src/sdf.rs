@@ -28,6 +28,7 @@ pub struct Sdf {
     pub iso_limits: (f32, f32),
 
     pub bind_group: wgpu::BindGroup,
+    pub time_taken: std::time::Duration,
 }
 
 impl Sdf {
@@ -46,19 +47,31 @@ impl Sdf {
             cell_count[2] as usize,
         ];
         let grid = mesh_to_sdf::Grid::from_bounding_box(start_cell, end_cell, ucell_count);
+
+        let now = std::time::Instant::now();
         let data = mesh_to_sdf::generate_grid_sdf(
             vertices,
             mesh_to_sdf::Topology::TriangleList(Some(indices)),
             &grid,
             sign_method,
         );
+        let time_taken = now.elapsed();
+        log::info!(
+            "SDF generation took: {:.3}ms",
+            time_taken.as_secs_f64() * 1000.0
+        );
 
+        let now = std::time::Instant::now();
         // sort cells by their distance to surface.
         // used in the voxel render pass to only draw valid cells.
         let ordered_indices = (0..data.len())
             .sorted_by(|i, j| data[*i].total_cmp(&data[*j]))
             .map(|i| i as u32)
             .collect_vec();
+        log::info!(
+            "voxel generation took: {:.3}ms",
+            now.elapsed().as_secs_f64() * 1000.0
+        );
 
         let cell_size = grid.get_cell_size();
         let first_cell = grid.get_first_cell();
@@ -121,6 +134,7 @@ impl Sdf {
             bind_group,
             grid,
             iso_limits,
+            time_taken,
         })
     }
 

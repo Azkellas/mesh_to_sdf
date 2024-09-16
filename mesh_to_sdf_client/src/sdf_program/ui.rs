@@ -235,8 +235,8 @@ impl SdfProgram {
 
         if let Some(ref run_info) = self.last_run_info {
             ui.label(format!(
-                "Last generation: {:.0}ms with size {}x{}x{} = {}",
-                run_info.time,
+                "Last generation: {:.3}ms with size {}x{}x{} = {}",
+                run_info.time.as_secs_f64() * 1000.0,
                 run_info.size[0],
                 run_info.size[1],
                 run_info.size[2],
@@ -504,17 +504,17 @@ impl SdfProgram {
             let mut new_value = self.parameters.cell_count;
             ui.add(
                 egui::DragValue::new(&mut new_value[0])
-                    .range(2..=100)
+                    .range(2..=256)
                     .prefix("x: "),
             );
             ui.add(
                 egui::DragValue::new(&mut new_value[1])
-                    .range(2..=100)
+                    .range(2..=256)
                     .prefix("y: "),
             );
             ui.add(
                 egui::DragValue::new(&mut new_value[2])
-                    .range(2..=100)
+                    .range(2..=256)
                     .prefix("z: "),
             );
 

@@ -31,7 +31,7 @@ struct ModelInfo {
 }
 
 struct LastRunInfo {
-    pub time: f32,
+    pub time: std::time::Duration,
     pub size: [u32; 3],
 }
 
@@ -680,7 +680,6 @@ impl SdfProgram {
             anyhow::bail!("No model to generate SDF from")
         };
 
-        let start = web_time::Instant::now();
         let middle = [
             (model_info.bounding_box[0] + model_info.bounding_box[3]) / 2.0,
             (model_info.bounding_box[1] + model_info.bounding_box[4]) / 2.0,
@@ -714,7 +713,7 @@ impl SdfProgram {
         )?);
 
         self.last_run_info = Some(LastRunInfo {
-            time: start.elapsed().as_secs_f32() * 1000.0,
+            time: self.sdf.as_ref().unwrap().time_taken,
             size: self.parameters.cell_count,
         });
 
