@@ -934,6 +934,9 @@ where
                         let cell_count = distance / grid.get_cell_size().get(direction_index);
                         let cell_count = (cell_count.floor() as usize)
                             .min(grid.get_cell_count()[direction_index] - 1);
+                        // Note: it might seem better to just store in the last cell and then
+                        // propagate at the end after all raycasts have been done.
+                        // Sadly this lead to no visible speedup.
                         let mut cell = data.start_cell;
                         for index in 0..=cell_count {
                             cell[direction_index] = index;
