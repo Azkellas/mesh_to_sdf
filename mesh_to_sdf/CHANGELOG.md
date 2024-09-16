@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `generate_grid_sdf` is now fully parallelized. It's between 10x and 20x faster on a high end cpu, depending on the number of triangles and the grid resolution.
+
+
 ## [0.3.0]
 
 ### Added
