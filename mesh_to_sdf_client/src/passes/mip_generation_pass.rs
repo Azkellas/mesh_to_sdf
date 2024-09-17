@@ -10,8 +10,7 @@ pub struct MipGenerationPass {
 
 impl MipGenerationPass {
     pub fn create_pipeline(device: &wgpu::Device) -> Result<wgpu::RenderPipeline> {
-        let shader =
-            ShaderBuilder::create_module(device, "utility/mipmap_generation.wgsl").unwrap();
+        let shader = ShaderBuilder::create_module(device, "utility/mipmap_generation.wgsl")?;
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("blit"),

@@ -79,7 +79,7 @@ impl Model {
         });
 
         Self {
-            name: model.mesh_name().map(|x| x.to_owned()),
+            name: model.mesh_name().map(std::borrow::ToOwned::to_owned),
             mesh,
             albedo,
             textures_bind_group,

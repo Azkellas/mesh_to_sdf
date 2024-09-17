@@ -2,7 +2,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use gltf::image::Source;
 use hashbrown::HashMap;
-use image::*;
+use image::{DynamicImage, GrayImage, ImageFormat, RgbImage, RgbaImage};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -36,39 +36,42 @@ impl GltfData {
     {
         let mut base_dir = PathBuf::from(path.as_ref());
         base_dir.pop();
-        GltfData {
+        Self {
             buffers,
             base_dir,
-            models: Default::default(),
-            materials: Default::default(),
-            rgb_images: Default::default(),
-            rgba_images: Default::default(),
-            gray_images: Default::default(),
+            models: HashMap::default(),
+            materials: HashMap::default(),
+            rgb_images: HashMap::default(),
+            rgba_images: HashMap::default(),
+            gray_images: HashMap::default(),
         }
     }
 
     /// Get a rgb image from the glTF document.
     pub fn get_rgb_image(&self, texture: &gltf::Texture<'_>) -> Arc<RgbImage> {
-        self.rgb_images
-            .get(&texture.index())
-            .expect("Didn't preload this image")
-            .clone()
+        Arc::clone(
+            self.rgb_images
+                .get(&texture.index())
+                .expect("Didn't preload this image"),
+        )
     }
 
     /// Get a base color image from the glTF document.
     pub fn get_base_color_image(&self, texture: &gltf::Texture<'_>) -> Arc<RgbaImage> {
-        self.rgba_images
-            .get(&texture.index())
-            .expect("Didn't preload this image")
-            .clone()
+        Arc::clone(
+            self.rgba_images
+                .get(&texture.index())
+                .expect("Didn't preload this image"),
+        )
     }
 
     /// Get a gray image from the glTF document.
     pub fn get_gray_image(&self, texture: &gltf::Texture<'_>, channel: usize) -> Arc<GrayImage> {
-        self.gray_images
-            .get(&(texture.index(), channel))
-            .expect("Didn't preload this image")
-            .clone()
+        Arc::clone(
+            self.gray_images
+                .get(&(texture.index(), channel))
+                .expect("Didn't preload this image"),
+        )
     }
 
     /// Load a texture from the glTF document.
@@ -90,19 +93,20 @@ impl GltfData {
                 if uri.starts_with("data:") {
                     let encoded = uri.split(',').nth(1).unwrap();
                     let data = URL_SAFE_NO_PAD.decode(encoded).unwrap();
-                    let mime_type = if let Some(ty) = mime_type {
-                        ty
-                    } else {
-                        uri.split(',')
-                            .next()
-                            .unwrap()
-                            .split(':')
-                            .nth(1)
-                            .unwrap()
-                            .split(';')
-                            .next()
-                            .unwrap()
-                    };
+                    let mime_type = mime_type.map_or_else(
+                        || {
+                            uri.split(',')
+                                .next()
+                                .unwrap()
+                                .split(':')
+                                .nth(1)
+                                .unwrap()
+                                .split(';')
+                                .next()
+                                .unwrap()
+                        },
+                        |ty| ty,
+                    );
                     let mime_type = mime_type.replace('/', ".");
                     image::load_from_memory_with_format(
                         &data,
@@ -111,7 +115,7 @@ impl GltfData {
                     .unwrap()
                 } else {
                     let path = self.base_dir.join(uri);
-                    open(path).unwrap()
+                    image::open(path).unwrap()
                 }
             }
         }

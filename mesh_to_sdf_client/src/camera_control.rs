@@ -21,10 +21,10 @@ pub struct CameraLookAt {
 impl Default for CameraLookAt {
     fn default() -> Self {
         // See object in 0,0,0 from the front top left
-        CameraLookAt {
+        Self {
             center: glam::Vec3::ZERO,
-            longitude: 2.0 * std::f32::consts::FRAC_PI_3,
-            latitude: std::f32::consts::FRAC_PI_3,
+            longitude: 2.0 * core::f32::consts::FRAC_PI_3,
+            latitude: core::f32::consts::FRAC_PI_3,
             distance: 5.0,
         }
     }
@@ -43,13 +43,13 @@ impl CameraLookAt {
         if mouse_delta.0 != 0.0 || mouse_delta.1 != 0.0 {
             if input.mouse_held(orbit_button) {
                 // Rotate around the object
-                let delta_x = mouse_delta.0 / window_size[0] * std::f32::consts::TAU;
-                let delta_y = mouse_delta.1 / window_size[1] * std::f32::consts::PI;
+                let delta_x = mouse_delta.0 / window_size[0] * core::f32::consts::TAU;
+                let delta_y = mouse_delta.1 / window_size[1] * core::f32::consts::PI;
                 self.longitude += delta_x;
                 self.latitude += delta_y;
                 self.latitude = self.latitude.clamp(
-                    -std::f32::consts::FRAC_PI_2 + 0.001,
-                    std::f32::consts::FRAC_PI_2 - 0.001,
+                    -core::f32::consts::FRAC_PI_2 + 0.001,
+                    core::f32::consts::FRAC_PI_2 - 0.001,
                 );
 
                 captured = true;

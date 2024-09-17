@@ -1,4 +1,4 @@
-use glam::*;
+use glam::{Vec2, Vec3, Vec4};
 
 /// Represents the 3 vertices of a triangle.
 pub type Triangle = [Vertex; 3];
@@ -23,7 +23,7 @@ pub struct Vertex {
 
 impl Default for Vertex {
     fn default() -> Self {
-        Vertex {
+        Self {
             position: Vec3::ZERO,
             normal: Vec3::ZERO,
             tangent: Vec4::ZERO,

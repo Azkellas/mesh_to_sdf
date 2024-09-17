@@ -24,7 +24,7 @@ pub enum SnapResult {
 ///                 Note that if you want to sample x in 0 1 2 .. 10, you need 11 cells in this direction and not 10.
 /// - `cell_size` can be different in each direction and even negative.
 /// - `cell_count` can be different in each direction
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(bound = "V: Serialize + DeserializeOwned"))]
 pub struct Grid<V: Point> {
@@ -40,7 +40,7 @@ impl<V: Point> Grid<V> {
     /// Create a new grid.
     /// - `first_cell` is the center of the first cell.
     /// - `cell_size` is the size of a cell. A cell goes from `center - cell_size / 2` to `center + cell_size / 2`.
-    pub fn new(first_cell: V, cell_size: V, cell_count: [usize; 3]) -> Self {
+    pub const fn new(first_cell: V, cell_size: V, cell_count: [usize; 3]) -> Self {
         Self {
             first_cell,
             cell_size,
@@ -74,7 +74,7 @@ impl<V: Point> Grid<V> {
     }
 
     /// Get the center of the first cell.
-    pub fn get_first_cell(&self) -> V {
+    pub const fn get_first_cell(&self) -> V {
         self.first_cell
     }
 
@@ -88,17 +88,17 @@ impl<V: Point> Grid<V> {
     }
 
     /// Get the size of a cell.
-    pub fn get_cell_size(&self) -> V {
+    pub const fn get_cell_size(&self) -> V {
         self.cell_size
     }
 
     /// Get the number of cells in each direction.
-    pub fn get_cell_count(&self) -> [usize; 3] {
+    pub const fn get_cell_count(&self) -> [usize; 3] {
         self.cell_count
     }
 
     /// Get the total  of cells.
-    pub fn get_total_cell_count(&self) -> usize {
+    pub const fn get_total_cell_count(&self) -> usize {
         self.cell_count[0] * self.cell_count[1] * self.cell_count[2]
     }
 
@@ -119,12 +119,12 @@ impl<V: Point> Grid<V> {
     }
 
     /// Get the index of a cell in a grid.
-    pub fn get_cell_idx(&self, cell: &[usize; 3]) -> usize {
+    pub const fn get_cell_idx(&self, cell: &[usize; 3]) -> usize {
         cell[2] + cell[1] * self.cell_count[2] + cell[0] * self.cell_count[1] * self.cell_count[2]
     }
 
     /// Get the integer coordinates of a cell index in a grid.
-    pub fn get_cell_integer_coordinates(&self, cell_idx: usize) -> [usize; 3] {
+    pub const fn get_cell_integer_coordinates(&self, cell_idx: usize) -> [usize; 3] {
         let z = cell_idx % self.cell_count[2];
         let y = (cell_idx / self.cell_count[2]) % self.cell_count[1];
         let x = cell_idx / (self.cell_count[1] * self.cell_count[2]);
@@ -153,6 +153,7 @@ impl<V: Point> Grid<V> {
             cell.z().floor() as isize,
         ];
 
+        #[expect(clippy::cast_possible_wrap)]
         let ires = [
             cell[0].clamp(0, self.cell_count[0] as isize - 1),
             cell[1].clamp(0, self.cell_count[1] as isize - 1),
@@ -161,10 +162,10 @@ impl<V: Point> Grid<V> {
 
         let res = [ires[0] as usize, ires[1] as usize, ires[2] as usize];
 
-        if ires != cell {
-            SnapResult::Outside(res)
-        } else {
+        if ires == cell {
             SnapResult::Inside(res)
+        } else {
+            SnapResult::Outside(res)
         }
     }
 

@@ -1,6 +1,6 @@
 use mesh_to_sdf::SignMethod;
 
-use super::*;
+use super::{command_stack, RaymarchMode, RenderMode, SdfProgram};
 
 impl SdfProgram {
     fn add_color_widget(ui: &mut egui::Ui, label: &str, color: [f32; 3]) -> Option<[f32; 3]> {
@@ -25,11 +25,12 @@ impl SdfProgram {
 
     /// Draw ui with egui.
     #[allow(clippy::unused_self)]
-    pub fn draw_gizmos(&mut self, _ui: &mut egui::Ui) {
+    pub fn draw_gizmos(&self, _ui: &mut egui::Ui) {
         // TODO: backport transform.
     }
 
     /// Draw ui with egui.
+    #[expect(clippy::too_many_lines)]
     pub fn draw_ui(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, ui: &mut egui::Ui) {
         egui::Grid::new("settings").show(ui, |ui| {
             Self::end_category(ui);
@@ -45,11 +46,11 @@ impl SdfProgram {
 
             Self::end_category(ui);
 
-            match self.parameters.file_name {
+            match &self.parameters.file_name {
                 None => {
                     ui.label("No file loaded");
                 }
-                Some(ref file_name) => {
+                Some(file_name) => {
                     ui.label("Current file");
                     ui.label(
                         file_name
@@ -200,7 +201,7 @@ impl SdfProgram {
                         settings: self.settings.settings,
                     };
 
-                    self.settings.settings.map_material = if map_material { 1 } else { 0 };
+                    self.settings.settings.map_material = u32::from(map_material);
 
                     // Get new state.
                     let new_state = command_stack::State {
@@ -233,7 +234,7 @@ impl SdfProgram {
             ui.end_row();
         });
 
-        if let Some(ref run_info) = self.last_run_info {
+        if let Some(run_info) = &self.last_run_info {
             ui.label(format!(
                 "Last generation: {:.3}ms with size {}x{}x{} = {}",
                 run_info.time.as_secs_f64() * 1000.0,
@@ -245,7 +246,7 @@ impl SdfProgram {
         }
         ui.end_row();
 
-        if let Some((ref msg, ref start)) = self.alert_message {
+        if let Some((msg, start)) = &self.alert_message {
             let timeout_s = 3.0_f32;
             if start.elapsed().as_secs_f32() > timeout_s {
                 self.alert_message = None;
@@ -321,8 +322,8 @@ impl SdfProgram {
         }
     }
 
-    fn ui_model_info(&mut self, ui: &mut egui::Ui) {
-        if let Some(ref model_info) = &self.model_info {
+    fn ui_model_info(&self, ui: &mut egui::Ui) {
+        if let Some(model_info) = &self.model_info {
             ui.label("Vertex count");
             ui.label(model_info.vertex_count.to_string());
             ui.end_row();
@@ -366,8 +367,6 @@ impl SdfProgram {
                     parameters: self.parameters.clone(),
                     settings: self.settings.settings,
                 };
-
-                println!("diffenrence: {} {:?} {:?}", label, color, new_color);
 
                 match label {
                     "Positive Color" => self.settings.settings.positive_color = new_color,
@@ -498,6 +497,7 @@ impl SdfProgram {
         ui.end_row();
     }
 
+    #[expect(clippy::too_many_lines)]
     fn ui_cells(&mut self, ui: &mut egui::Ui) {
         ui.label("Cell count");
         ui.horizontal(|ui| {
@@ -547,21 +547,15 @@ impl SdfProgram {
 
         ui.label("Cell size");
         ui.horizontal(|ui| {
-            let (x_min, x_max) = if let Some(ref model_info) = &self.model_info {
+            let (x_min, x_max) = self.model_info.as_ref().map_or((0.0, 1.0), |model_info| {
                 (model_info.bounding_box[0], model_info.bounding_box[3])
-            } else {
-                (0.0, 1.0)
-            };
-            let (y_min, y_max) = if let Some(ref model_info) = &self.model_info {
+            });
+            let (y_min, y_max) = self.model_info.as_ref().map_or((0.0, 1.0), |model_info| {
                 (model_info.bounding_box[1], model_info.bounding_box[4])
-            } else {
-                (0.0, 1.0)
-            };
-            let (z_min, z_max) = if let Some(ref model_info) = &self.model_info {
+            });
+            let (z_min, z_max) = self.model_info.as_ref().map_or((0.0, 1.0), |model_info| {
                 (model_info.bounding_box[2], model_info.bounding_box[5])
-            } else {
-                (0.0, 1.0)
-            };
+            });
 
             let size_x = (x_max - x_min) / self.parameters.cell_count[0] as f32;
             let size_y = (y_max - y_min) / self.parameters.cell_count[1] as f32;
@@ -628,7 +622,7 @@ impl SdfProgram {
             let mut new_value = self.settings.settings.bounding_box_extent;
             ui.add(egui::Slider::new(&mut new_value, 1.0..=3.0));
 
-            if new_value != self.settings.settings.bounding_box_extent {
+            if !float_cmp::approx_eq!(f32, new_value, self.settings.settings.bounding_box_extent) {
                 // Save old state.
                 let old_state = command_stack::State {
                     parameters: self.parameters.clone(),
@@ -670,14 +664,14 @@ impl SdfProgram {
         ui.label("Longitude");
         ui.add(egui::Slider::new(
             &mut self.pass.shadow.map.light.camera.look_at.longitude,
-            0.0..=std::f32::consts::TAU,
+            0.0..=core::f32::consts::TAU,
         ));
         ui.end_row();
 
         ui.label("Latitude");
         ui.add(egui::Slider::new(
             &mut self.pass.shadow.map.light.camera.look_at.latitude,
-            -std::f32::consts::FRAC_PI_2..=std::f32::consts::FRAC_PI_2,
+            -core::f32::consts::FRAC_PI_2..=core::f32::consts::FRAC_PI_2,
         ));
         ui.end_row();
     }

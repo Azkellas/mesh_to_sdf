@@ -19,6 +19,18 @@ impl Point for [f32; 3] {
     fn z(&self) -> f32 {
         self[2]
     }
+
+    fn x_mut(&mut self) -> &mut f32 {
+        &mut self[0]
+    }
+
+    fn y_mut(&mut self) -> &mut f32 {
+        &mut self[1]
+    }
+
+    fn z_mut(&mut self) -> &mut f32 {
+        &mut self[2]
+    }
 }
 
 #[cfg(test)]
@@ -42,5 +54,11 @@ mod tests {
         assert_eq!(p1.dist(&p2), 5.196152);
         assert_eq!(p1.fmul(2.0), [2.0, 4.0, 6.0]);
         assert_eq!(p1.comp_div(&p2), [0.25, 0.4, 0.5]);
+
+        let mut p = p1;
+        *p.x_mut() = 10.0;
+        *p.y_mut() = 20.0;
+        *p.z_mut() = 30.0;
+        assert_eq!(p, [10.0, 20.0, 30.0]);
     }
 }

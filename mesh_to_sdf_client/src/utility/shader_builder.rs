@@ -17,11 +17,11 @@ impl ShaderBuilder {
     pub fn load(name: &str) -> Result<String> {
         // read file.
         Self::get(name)
-            .ok_or(anyhow::anyhow!("Shader not found: {name}"))
+            .ok_or_else(|| anyhow::anyhow!("Shader not found: {name}"))
             // Try parsing to utf8.
             .and_then(|file| {
-                std::str::from_utf8(file.data.as_ref())
-                    .map(|x| x.to_owned())
+                core::str::from_utf8(file.data.as_ref())
+                    .map(std::borrow::ToOwned::to_owned)
                     .map_err(|e| anyhow::anyhow!(e))
             })
     }
@@ -33,7 +33,7 @@ impl ShaderBuilder {
 
     /// Create a shader module from a shader file.
     pub fn create_module(device: &wgpu::Device, name: &str) -> Result<wgpu::ShaderModule> {
-        let shader = ShaderBuilder::build(name)?;
+        let shader = Self::build(name)?;
 
         // device.create_shader_module panics if the shader is malformed
         // only check this on native debug builds.
@@ -109,7 +109,7 @@ impl ShaderBuilder {
         // File was already included, return empty string.
         let owned_name = name.to_owned();
         if seen.contains(&owned_name) {
-            return Ok("".to_owned());
+            return Ok(String::new());
         }
         seen.push(owned_name);
 

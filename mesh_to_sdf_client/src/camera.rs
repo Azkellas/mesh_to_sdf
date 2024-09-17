@@ -44,11 +44,11 @@ pub struct CameraUniform {
     pub eye: glam::Vec4,
     pub resolution: [u32; 2],
     pub znear: f32,
-    _padding: f32,
+    pub padding: f32,
 }
 
 impl CameraUniform {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             view_proj: glam::Mat4::IDENTITY,
             view: glam::Mat4::IDENTITY,
@@ -59,7 +59,7 @@ impl CameraUniform {
             eye: glam::Vec4::ZERO,
             resolution: [800, 600],
             znear: 0.1,
-            _padding: 0.0,
+            padding: 0.0,
         }
     }
 

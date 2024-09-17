@@ -1,6 +1,7 @@
 //! Grid generation module.
 
-use std::{sync::atomic::AtomicU32, thread::ScopedJoinHandle};
+use core::sync::atomic::AtomicU32;
+use std::thread::ScopedJoinHandle;
 
 use bvh::{bounding_hierarchy::BoundingHierarchy, bvh::Bvh};
 use itertools::Itertools;
@@ -8,7 +9,9 @@ use ordered_float::NotNan;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 
-use crate::{compare_distances, geo, BvhNode, Grid, Point, SignMethod, SnapResult, Topology};
+use crate::{compare_distances, geo, Grid, Point, SignMethod, SnapResult, Topology};
+
+use super::generic::bvh::BvhNode;
 
 /// State for the binary heap.
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -24,14 +27,14 @@ struct State {
 impl Ord for State {
     /// We compare by distance first, then use cell and triangles as tie-breakers.
     /// Only the distance is important to reduce the number of steps.
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         compare_distances(other.distance.into_inner(), self.distance.into_inner())
             .then_with(|| self.cell.cmp(&other.cell))
             .then_with(|| self.triangle.cmp(&other.triangle))
     }
 }
 impl PartialOrd for State {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
@@ -89,9 +92,8 @@ where
         // starting the preheap computation as they both use the same rayon thread pool.
         // this is the only precomputation using the rayon thread pool.
         // If we're not in Raycast mode, we don't compute the bvh.
-        let mut bvh_handle = None;
-        if sign_method == SignMethod::Raycast {
-            bvh_handle = Some(scope.spawn(move || {
+        let bvh_handle = if sign_method == SignMethod::Raycast {
+            Some(scope.spawn(move || {
                 let mut bvh_nodes = Topology::get_triangles(vertices, indices)
                     .map(|triangle| BvhNode {
                         vertex_indices: triangle,
@@ -106,8 +108,10 @@ where
 
                 let bvh = Bvh::build_par(&mut bvh_nodes);
                 (bvh, bvh_nodes)
-            }));
-        }
+            }))
+        } else {
+            None
+        };
 
         // prehead initialization. RwLock can be slow to create one by one.
         // Needed for the first step (preheap computation).
@@ -298,7 +302,7 @@ where
         // First step done.
         log::info!(
             "[generate_grid_sdf] init steps: {} in {:.3}ms",
-            steps.fetch_min(0, std::sync::atomic::Ordering::SeqCst),
+            steps.fetch_min(0, core::sync::atomic::Ordering::SeqCst),
             now.elapsed().as_secs_f64() * 1000.0
         );
         now = web_time::Instant::now();
@@ -337,7 +341,7 @@ where
         // Second step done.
         log::info!(
             "[generate_grid_sdf] propagation steps: {} in {:.3}ms",
-            steps.fetch_min(0, std::sync::atomic::Ordering::SeqCst),
+            steps.fetch_min(0, core::sync::atomic::Ordering::SeqCst),
             now.elapsed().as_secs_f64() * 1000.0
         );
         now = web_time::Instant::now();
@@ -444,7 +448,7 @@ fn generate_preheap<V: Point>(
                 let mut stored_distance = preheap[cell_idx].write();
                 if compare_distances(distance, stored_distance.1).is_lt() {
                     // New smallest ditance: update the grid and add the cell to the heap.
-                    steps.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    steps.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
                     *stored_distance = (triangle, distance);
                 }
             }
@@ -474,6 +478,7 @@ fn generate_heap<V: Point>(
             *distances[cell_idx].write() = distance;
             State {
                 distance: NotNan::new(distance)
+                    // SAFETY: f32::MAX is not Nan.
                     .unwrap_or(unsafe { NotNan::new_unchecked(f32::MAX) }),
 
                 triangle,
@@ -496,13 +501,14 @@ fn propagate_heap<V: Point>(
     steps: &AtomicU32,
 ) {
     while let Some(State { triangle, cell, .. }) = heap.pop() {
-        steps.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        steps.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         let a = &vertices[triangle.0];
         let b = &vertices[triangle.1];
         let c = &vertices[triangle.2];
 
         // Compute neighbours around the cell in the three directions.
         // Discard neighbours that are outside the grid.
+        #[expect(clippy::cast_possible_wrap)]
         let neighbours = itertools::iproduct!(-1..=1, -1..=1, -1..=1)
             .map(|v| {
                 (
@@ -539,6 +545,7 @@ fn propagate_heap<V: Point>(
                 *stored_distance = distance;
                 let state = State {
                     distance: NotNan::new(distance)
+                        // SAFETY: f32::MAX is not Nan.
                         .unwrap_or(unsafe { NotNan::new_unchecked(f32::MAX) }),
                     triangle,
                     cell: neighbour_cell,
@@ -584,7 +591,7 @@ fn compute_raycasts<V: Point>(
         let candidates = bvh.traverse(&ray, bvh_nodes);
         raycasts_done.fetch_add(
             candidates.len() as u32,
-            std::sync::atomic::Ordering::Relaxed,
+            core::sync::atomic::Ordering::Relaxed,
         );
         for candidate in candidates {
             let a = &vertices[candidate.vertex_indices.0];
@@ -606,7 +613,7 @@ fn compute_raycasts<V: Point>(
                     cell[direction_index] = index;
                     let cell_idx = grid.get_cell_idx(&cell);
                     intersections[cell_idx][direction_index]
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
                 }
             }
         }
@@ -619,9 +626,9 @@ fn compute_raycasts<V: Point>(
         // This helps when the mesh is not watertight
         // and to compensate the discrete nature of the grid.
         let inter = [
-            intersections[i][0].load(std::sync::atomic::Ordering::SeqCst),
-            intersections[i][1].load(std::sync::atomic::Ordering::SeqCst),
-            intersections[i][2].load(std::sync::atomic::Ordering::SeqCst),
+            intersections[i][0].load(core::sync::atomic::Ordering::SeqCst),
+            intersections[i][1].load(core::sync::atomic::Ordering::SeqCst),
+            intersections[i][2].load(core::sync::atomic::Ordering::SeqCst),
         ];
         match (inter[0] % 2, inter[1] % 2, inter[2] % 2) {
             // if at least two are odd, the cell is deeemed inside.
@@ -631,7 +638,7 @@ fn compute_raycasts<V: Point>(
         }
     }
 
-    raycasts_done.load(std::sync::atomic::Ordering::SeqCst)
+    raycasts_done.load(core::sync::atomic::Ordering::SeqCst)
 }
 
 /// Generate raycasts for the sign raycast method in a grid.
@@ -678,7 +685,43 @@ fn generate_raycasts<V: Point>(grid: &Grid<V>) -> Vec<RaycastData> {
 
 #[cfg(test)]
 mod tests {
+    use crate::{generate_sdf, AccelerationMethod};
+
     use super::*;
+
+    #[test]
+    fn test_generate_grid() {
+        // make sure generate_grid_sdf returns the same result as generate_sdf.
+        // assumes generate_sdf is properly tested and correct.
+        let vertices: Vec<[f32; 3]> = vec![[0., 1., 0.], [1., 2., 3.], [1., 3., 4.], [2., 0., 0.]];
+        let indices: Vec<u32> = vec![0, 1, 2, 1, 2, 3];
+        let grid = Grid::from_bounding_box(&[0., 0., 0.], &[5., 5., 5.], [5, 5, 5]);
+        let mut query_points = Vec::new();
+        for x in 0..grid.get_cell_count()[0] {
+            for y in 0..grid.get_cell_count()[1] {
+                for z in 0..grid.get_cell_count()[2] {
+                    query_points.push(grid.get_cell_center(&[x, y, z]));
+                }
+            }
+        }
+        let sdf = generate_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(&indices)),
+            &query_points,
+            AccelerationMethod::None(SignMethod::Raycast),
+        );
+        let grid_sdf = generate_grid_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(&indices)),
+            &grid,
+            SignMethod::Raycast,
+        );
+
+        // Test against generate_sdf
+        for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
+            assert_eq!(sdf, grid_sdf, "i: {}", i);
+        }
+    }
 
     /// Test continuity.
     /// Only valid for watertight meshes and Raycast method.

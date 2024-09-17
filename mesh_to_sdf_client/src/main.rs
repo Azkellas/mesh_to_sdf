@@ -37,14 +37,14 @@ fn main() {
     // Only enabled in native debug mode.
     #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
     {
-        let data = data.clone();
+        let data = Arc::clone(&data);
         std::thread::spawn(move || {
             // first try to watch the mesh_to_sdf_client/shaders folder (runnin from the root of the project)
             // if that fails, try to watch the shaders folder (running from the client folder)
             let paths = ["mesh_to_sdf_client/shaders", "shaders"];
             for path in paths {
                 log::info!("Watching {path}");
-                if let Err(error) = watch(path, data.clone()) {
+                if let Err(error) = watch(path, &data) {
                     log::error!("Could not watch shaders folder: {error:?}");
                 }
             }
@@ -60,7 +60,7 @@ fn main() {
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 fn watch<P: AsRef<Path>>(
     path: P,
-    data: Arc<Mutex<crate::reload_flags::ReloadFlags>>,
+    data: &Arc<Mutex<crate::reload_flags::ReloadFlags>>,
 ) -> notify::Result<()> {
     let (tx, rx) = std::sync::mpsc::channel();
 

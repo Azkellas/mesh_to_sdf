@@ -141,7 +141,7 @@ impl CubemapGenerationPass {
 
         let model_bind_group_layout = Self::create_model_bind_group_layout(device);
 
-        let render_pipeline = CubemapGenerationPass::create_pipeline(
+        let render_pipeline = Self::create_pipeline(
             device,
             view_format,
             &model_bind_group_layout,
@@ -149,7 +149,7 @@ impl CubemapGenerationPass {
             &render_textures_bind_group_layout,
         )?;
 
-        Ok(CubemapGenerationPass {
+        Ok(Self {
             render_pipeline,
             model_bind_group_layout,
             textures_bind_group_layout: render_textures_bind_group_layout,

@@ -66,14 +66,14 @@ impl ShadowPass {
     }
 
     pub fn new(device: &wgpu::Device, shadow_map: ShadowMap) -> Result<Self> {
-        Ok(ShadowPass {
-            render_pipeline: ShadowPass::create_pipeline(device, &shadow_map)?,
+        Ok(Self {
+            render_pipeline: Self::create_pipeline(device, &shadow_map)?,
             map: shadow_map,
         })
     }
 
     pub fn run(
-        &mut self,
+        &self,
         command_encoder: &mut wgpu::CommandEncoder,
         model: &Model,
         model_instance: &ModelInstance,

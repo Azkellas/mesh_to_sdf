@@ -16,7 +16,7 @@ pub struct VoxelRenderPass {
     pub shadow_bind_group_layout: Option<wgpu::BindGroupLayout>,
     pub shadow_bind_group: Option<wgpu::BindGroup>,
 
-    voxel: Mesh,
+    pub voxel: Mesh,
 }
 
 impl VoxelRenderPass {
@@ -96,7 +96,7 @@ impl VoxelRenderPass {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: wgpu::BufferSize::new(
-                            std::mem::size_of::<SdfUniforms>() as _
+                            core::mem::size_of::<SdfUniforms>() as _,
                         ),
                     },
                     count: None,
@@ -219,7 +219,7 @@ impl VoxelRenderPass {
         let render_shadow_bind_group =
             Self::create_shadow_bind_group(device, shadow_map, &render_shadow_bind_group_layout);
 
-        let render_pipeline = VoxelRenderPass::create_pipeline(
+        let render_pipeline = Self::create_pipeline(
             device,
             view_format,
             camera,
@@ -231,7 +231,7 @@ impl VoxelRenderPass {
 
         let voxel = create_box(device);
 
-        Ok(VoxelRenderPass {
+        Ok(Self {
             render_pipeline,
             voxel_bind_group_layout,
             voxel,
@@ -243,7 +243,7 @@ impl VoxelRenderPass {
 
     #[allow(clippy::too_many_arguments)]
     pub fn run(
-        &mut self,
+        &self,
         command_encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         depth_map: &Texture,

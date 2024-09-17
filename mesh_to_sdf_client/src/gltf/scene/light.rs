@@ -1,4 +1,4 @@
-use glam::*;
+use glam::{Mat4, Vec3, Vec4Swizzles};
 use gltf::khr_lights_punctual::{Kind, Light as GltfLight};
 
 /// Represents a light.
@@ -70,16 +70,16 @@ pub enum Light {
 }
 
 impl Light {
-    pub(crate) fn load(gltf_light: GltfLight, transform: &Mat4) -> Self {
+    pub(crate) fn load(gltf_light: &GltfLight, transform: &Mat4) -> Self {
         match gltf_light.kind() {
-            Kind::Directional => Light::Directional {
+            Kind::Directional => Self::Directional {
                 name: gltf_light.name().map(String::from),
                 extras: gltf_light.extras().clone(),
                 direction: -1. * transform.col(2).xyz().normalize(),
                 intensity: gltf_light.intensity(),
                 color: Vec3::from(gltf_light.color()),
             },
-            Kind::Point => Light::Point {
+            Kind::Point => Self::Point {
                 name: gltf_light.name().map(String::from),
                 extras: gltf_light.extras().clone(),
                 position: transform.col(3).xyz(),
@@ -89,7 +89,7 @@ impl Light {
             Kind::Spot {
                 inner_cone_angle,
                 outer_cone_angle,
-            } => Light::Spot {
+            } => Self::Spot {
                 name: gltf_light.name().map(String::from),
                 extras: gltf_light.extras().clone(),
                 position: transform.col(3).xyz(),

@@ -6,7 +6,7 @@ impl Point for glam::Vec3 {
 
     /// Create a new point.
     fn new(x: f32, y: f32, z: f32) -> Self {
-        glam::Vec3::new(x, y, z)
+        Self::new(x, y, z)
     }
 
     /// Get the x coordinate.
@@ -24,6 +24,18 @@ impl Point for glam::Vec3 {
         self.z
     }
 
+    fn x_mut(&mut self) -> &mut f32 {
+        &mut self.x
+    }
+
+    fn y_mut(&mut self) -> &mut f32 {
+        &mut self.y
+    }
+
+    fn z_mut(&mut self) -> &mut f32 {
+        &mut self.z
+    }
+
     /// Add two points.
     fn add(&self, other: &Self) -> Self {
         *self + *other
@@ -34,19 +46,19 @@ impl Point for glam::Vec3 {
     }
     /// Dot product of two points.
     fn dot(&self, other: &Self) -> f32 {
-        glam::Vec3::dot(*self, *other)
+        Self::dot(*self, *other)
     }
     /// Cross product of two points.
     fn cross(&self, other: &Self) -> Self {
-        glam::Vec3::cross(*self, *other)
+        Self::cross(*self, *other)
     }
     /// Length of the point.
     fn length(&self) -> f32 {
-        glam::Vec3::length(*self)
+        Self::length(*self)
     }
     /// Distance between two points.
     fn dist(&self, other: &Self) -> f32 {
-        glam::Vec3::distance(*self, *other)
+        Self::distance(*self, *other)
     }
     /// Multiply a point by a scalar.
     fn fmul(&self, other: f32) -> Self {
@@ -104,6 +116,12 @@ mod tests {
             if ap2[0] != 0.0 && ap2[1] != 0.0 && ap2[2] != 0.0 {
                 assert!(cmp(Point::comp_div(&p1, &p2), ap1.comp_div(&ap2)));
             }
+
+            let mut p = p1;
+            *p.x_mut() = p1.x() + 10.0;
+            *p.y_mut() = p2.y() + 20.0;
+            *p.z_mut() = p3.z() + 30.0;
+            assert_eq!(p, Point::new(p1.x() + 10.0, p2.y() + 20.0, p3.z() + 30.0));
         }
     }
 }

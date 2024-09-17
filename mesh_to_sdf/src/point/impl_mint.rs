@@ -23,6 +23,18 @@ impl Point for mint::Point3<f32> {
     fn z(&self) -> f32 {
         self.z
     }
+
+    fn x_mut(&mut self) -> &mut f32 {
+        &mut self.x
+    }
+
+    fn y_mut(&mut self) -> &mut f32 {
+        &mut self.y
+    }
+
+    fn z_mut(&mut self) -> &mut f32 {
+        &mut self.z
+    }
 }
 
 impl Point for mint::Vector3<f32> {
@@ -47,6 +59,18 @@ impl Point for mint::Vector3<f32> {
     /// Get the z coordinate.
     fn z(&self) -> f32 {
         self.z
+    }
+
+    fn x_mut(&mut self) -> &mut f32 {
+        &mut self.x
+    }
+
+    fn y_mut(&mut self) -> &mut f32 {
+        &mut self.y
+    }
+
+    fn z_mut(&mut self) -> &mut f32 {
+        &mut self.z
     }
 }
 
@@ -96,6 +120,12 @@ mod tests {
             if ap2[0] != 0.0 && ap2[1] != 0.0 && ap2[2] != 0.0 {
                 assert!(cmp(Point::comp_div(&p1, &p2), ap1.comp_div(&ap2)));
             }
+
+            let mut p = p1;
+            *p.x_mut() = p1.x() + 10.0;
+            *p.y_mut() = p2.y() + 20.0;
+            *p.z_mut() = p3.z() + 30.0;
+            assert_eq!(p, Point::new(p1.x() + 10.0, p2.y() + 20.0, p3.z() + 30.0));
         }
     }
 
@@ -140,6 +170,12 @@ mod tests {
             if ap2[0] != 0.0 && ap2[1] != 0.0 && ap2[2] != 0.0 {
                 assert!(cmp(Point::comp_div(&p1, &p2), ap1.comp_div(&ap2)));
             }
+
+            let mut p = p1;
+            *p.x_mut() = p1.x() + 10.0;
+            *p.y_mut() = p2.y() + 20.0;
+            *p.z_mut() = p3.z() + 30.0;
+            assert_eq!(p, Point::new(p1.x() + 10.0, p2.y() + 20.0, p3.z() + 30.0));
         }
     }
 }

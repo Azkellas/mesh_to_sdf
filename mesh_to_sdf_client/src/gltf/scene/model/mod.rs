@@ -1,13 +1,15 @@
+use glam::{Vec2, Vec3, Vec4};
+use mode::BadMode;
+use vertex::{Line, Triangle, Vertex};
+
+use crate::gltf::GltfData;
+
 mod material;
 mod mode;
 mod vertex;
 
-use super::super::utils::*;
-use glam::*;
-
 pub use material::*;
-pub use mode::*;
-pub use vertex::*;
+pub use mode::Mode;
 
 /// Geometry to be rendered with the given material.
 ///
@@ -85,17 +87,17 @@ impl GltfModel {
     }
 
     /// Mesh extra data. Requires the `extras` feature.
-    pub fn mesh_extras(&self) -> &gltf::json::extras::Extras {
+    pub const fn mesh_extras(&self) -> &gltf::json::extras::Extras {
         &self.mesh_extras
     }
 
     /// Primitive extra data. Requires the `extras` feature.
-    pub fn primitive_extras(&self) -> &gltf::json::extras::Extras {
+    pub const fn primitive_extras(&self) -> &gltf::json::extras::Extras {
         &self.primitive_extras
     }
 
     /// Material to apply to the whole model.
-    pub fn material_index(&self) -> Option<usize> {
+    pub const fn material_index(&self) -> Option<usize> {
         self.material_index
     }
 
@@ -104,7 +106,7 @@ impl GltfModel {
     ///
     /// **Note**: If you're not rendering with **OpenGL** you probably want to use
     /// `triangles()`, `lines()` or `points()` instead.
-    pub fn vertices(&self) -> &Vec<Vertex> {
+    pub const fn vertices(&self) -> &Vec<Vertex> {
         &self.vertices
     }
 
@@ -112,7 +114,7 @@ impl GltfModel {
     ///
     /// **Note**: If you're **not** rendering with **OpenGL** you probably want to use
     /// `triangles()`, `lines()` or `points()` instead.
-    pub fn indices(&self) -> Option<&Vec<u32>> {
+    pub const fn indices(&self) -> Option<&Vec<u32>> {
         self.indices.as_ref()
     }
 
@@ -135,6 +137,7 @@ impl GltfModel {
         let indices = (0..self.vertices.len() as u32).collect();
         let indices = self.indices().unwrap_or(&indices);
 
+        #[expect(clippy::wildcard_enum_match_arm)]
         match self.mode {
             Mode::Triangles => {
                 for i in (0..indices.len()).step_by(3) {
@@ -176,6 +179,7 @@ impl GltfModel {
         let mut lines = vec![];
         let indices = (0..self.vertices.len() as u32).collect();
         let indices = self.indices().unwrap_or(&indices);
+        #[expect(clippy::wildcard_enum_match_arm)]
         match self.mode {
             Mode::Lines => {
                 for i in (0..indices.len()).step_by(2) {
@@ -209,9 +213,10 @@ impl GltfModel {
     ///
     /// **Note**: This function will return an error if the mode isn't `Points`.
     pub fn points(&self) -> Result<&Vec<Vertex>, BadMode> {
-        match self.mode {
-            Mode::Points => Ok(&self.vertices),
-            _ => Err(BadMode { mode: self.mode() }),
+        if self.mode == Mode::Points {
+            Ok(&self.vertices)
+        } else {
+            Err(BadMode { mode: self.mode() })
         }
     }
 
@@ -219,7 +224,7 @@ impl GltfModel {
     ///
     /// **Note**: If this function return `false` all vertices has a normal field
     /// initialized to `zero`.
-    pub fn has_normals(&self) -> bool {
+    pub const fn has_normals(&self) -> bool {
         self.has_normals
     }
 
@@ -227,7 +232,7 @@ impl GltfModel {
     ///
     /// **Note**: If this function return `false` all vertices has a tangent field
     /// initialized to `zero`.
-    pub fn has_tangents(&self) -> bool {
+    pub const fn has_tangents(&self) -> bool {
         self.has_tangents
     }
 
@@ -235,7 +240,7 @@ impl GltfModel {
     ///
     /// **Note**: If this function return `false` all vertices has a `tex_coord` field
     /// initialized to `zero`.
-    pub fn has_tex_coords(&self) -> bool {
+    pub const fn has_tex_coords(&self) -> bool {
         self.has_tex_coords
     }
 
@@ -257,37 +262,31 @@ impl GltfModel {
             .collect();
 
         // Fill normals
-        let has_normals = if let Some(normals) = reader.read_normals() {
+        let has_normals = reader.read_normals().map_or(false, |normals| {
             for (i, normal) in normals.enumerate() {
                 vertices[i].normal = Vec3::from(normal).normalize();
             }
             true
-        } else {
-            false
-        };
+        });
 
         // Fill tangents
-        let has_tangents = if let Some(tangents) = reader.read_tangents() {
+        let has_tangents = reader.read_tangents().map_or(false, |tangents| {
             for (i, tangent) in tangents.enumerate() {
                 let tangent = Vec4::from(tangent);
                 vertices[i].tangent = tangent.truncate().normalize().extend(tangent.w);
             }
             true
-        } else {
-            false
-        };
+        });
 
         // Texture coordinates
-        let has_tex_coords = if let Some(tex_coords) = reader.read_tex_coords(0) {
+        let has_tex_coords = reader.read_tex_coords(0).map_or(false, |tex_coords| {
             for (i, tex_coords) in tex_coords.into_f32().enumerate() {
                 vertices[i].tex_coords = Vec2::from(tex_coords);
             }
             true
-        } else {
-            false
-        };
+        });
 
-        GltfModel {
+        Self {
             mesh_name: mesh.name().map(String::from),
             mesh_extras: mesh.extras().clone(),
             primitive_extras: primitive.extras().clone(),

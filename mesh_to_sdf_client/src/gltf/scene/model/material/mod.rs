@@ -4,7 +4,7 @@ mod occlusion;
 mod pbr;
 
 use core::ops::Deref;
-use glam::*;
+use glam::{Vec2, Vec3, Vec4};
 use image::{ImageBuffer, Pixel};
 use std::sync::Arc;
 
@@ -52,7 +52,7 @@ impl Material {
             // Transform to float
             let mut px_f = Vec4::ZERO;
             for i in 0..4 {
-                px_f[i] = (px_u[i] as f32) / 255.;
+                px_f[i] = f32::from(px_u[i]) / 255.;
             }
             // Convert sRGB to RGB
             let pixel = Vec4::new(px_f.x.powf(2.2), px_f.y.powf(2.2), px_f.z.powf(2.2), px_f.w);
@@ -81,11 +81,9 @@ impl Material {
     /// otherwise the function will fail.
     pub fn get_metallic(&self, tex_coords: Vec2) -> f32 {
         self.pbr.metallic_factor
-            * if let Some(texture) = &self.pbr.metallic_texture {
-                Self::get_pixel(tex_coords, texture)[0] as f32 / 255.
-            } else {
-                1.
-            }
+            * self.pbr.metallic_texture.as_ref().map_or(1., |texture| {
+                f32::from(Self::get_pixel(tex_coords, texture)[0]) / 255.
+            })
     }
 
     /// Get the roughness value of the material given a texture coordinate. If no
@@ -95,11 +93,9 @@ impl Material {
     /// otherwise the function will fail.
     pub fn get_roughness(&self, tex_coords: Vec2) -> f32 {
         self.pbr.roughness_factor
-            * if let Some(texture) = &self.pbr.roughness_texture {
-                Self::get_pixel(tex_coords, texture)[0] as f32 / 255.
-            } else {
-                1.
-            }
+            * self.pbr.roughness_texture.as_ref().map_or(1., |texture| {
+                f32::from(Self::get_pixel(tex_coords, texture)[0]) / 255.
+            })
     }
 
     /// Get the normal vector of the material given a texture coordinate. If no
@@ -113,9 +109,9 @@ impl Material {
         Some(
             normal.factor
                 * Vec3::new(
-                    (pixel[0] as f32) / 127.5 - 1.,
-                    (pixel[1] as f32) / 127.5 - 1.,
-                    (pixel[2] as f32) / 127.5 - 1.,
+                    f32::from(pixel[0]) / 127.5 - 1.,
+                    f32::from(pixel[1]) / 127.5 - 1.,
+                    f32::from(pixel[2]) / 127.5 - 1.,
                 ),
         )
     }
@@ -127,7 +123,9 @@ impl Material {
     /// otherwise the function will fail.
     pub fn get_occlusion(&self, tex_coords: Vec2) -> Option<f32> {
         let occlusion = self.occlusion.as_ref()?;
-        Some(occlusion.factor * (Self::get_pixel(tex_coords, &occlusion.texture)[0] as f32 / 255.))
+        Some(
+            occlusion.factor * f32::from(Self::get_pixel(tex_coords, &occlusion.texture)[0]) / 255.,
+        )
     }
 
     /// Get the emissive color Rgb of the material given a texture coordinate.
@@ -141,7 +139,7 @@ impl Material {
         if let Some(texture) = &self.emissive.texture {
             let pixel = Self::get_pixel(tex_coords, texture);
             for i in 0..3 {
-                res[i] *= (pixel[i] as f32) / 255.;
+                res[i] *= f32::from(pixel[i]) / 255.;
             }
         }
         res
@@ -159,21 +157,21 @@ impl Material {
         };
 
         texture[(
-            (coords.x as i64).rem_euclid(texture.width() as i64) as u32,
-            (coords.y as i64).rem_euclid(texture.height() as i64) as u32,
+            (coords.x as i64).rem_euclid(i64::from(texture.width())) as u32,
+            (coords.y as i64).rem_euclid(i64::from(texture.height())) as u32,
         )]
     }
 
     pub(crate) fn load(gltf_mat: &gltf::Material, data: &GltfData) -> Arc<Self> {
         if let Some(material) = data.materials.get(&gltf_mat.index()) {
-            return material.clone();
+            return Arc::clone(material);
         }
 
-        let material = Arc::new(Material {
+        let material = Arc::new(Self {
             name: gltf_mat.name().map(String::from),
             extras: gltf_mat.extras().clone(),
 
-            pbr: PbrMaterial::load(gltf_mat.pbr_metallic_roughness(), data),
+            pbr: PbrMaterial::load(&gltf_mat.pbr_metallic_roughness(), data),
             normal: NormalMap::load(gltf_mat, data),
             occlusion: Occlusion::load(gltf_mat, data),
             emissive: Emissive::load(gltf_mat, data),

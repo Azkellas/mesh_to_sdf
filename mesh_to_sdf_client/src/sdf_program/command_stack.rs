@@ -56,11 +56,11 @@ impl CommandStack {
             if transaction.0 == label && transaction.1.elapsed().as_secs_f32() < 10.0 / 60.0 {
                 transaction.2.new_state = command.new_state;
                 return;
-            } else {
-                self.redo_stack.clear();
-                self.undo_stack.push_back(transaction.clone());
-                self.current_transaction = None;
             }
+
+            self.redo_stack.clear();
+            self.undo_stack.push_back(transaction.clone());
+            self.current_transaction = None;
         }
 
         self.current_transaction = Some((label, Instant::now(), command));
