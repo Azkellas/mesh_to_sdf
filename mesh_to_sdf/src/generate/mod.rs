@@ -1,3 +1,4 @@
 //! Module for generating SDFs from meshes.
 
-pub mod grid;
+pub(crate) mod generic;
+pub(crate) mod grid;

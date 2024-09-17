@@ -8,7 +8,9 @@ use ordered_float::NotNan;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 
-use crate::{compare_distances, geo, BvhNode, Grid, Point, SignMethod, SnapResult, Topology};
+use crate::{compare_distances, geo, Grid, Point, SignMethod, SnapResult, Topology};
+
+use super::generic::bvh::BvhNode;
 
 /// State for the binary heap.
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -95,11 +97,6 @@ where
                 let mut bvh_nodes = Topology::get_triangles(vertices, indices)
                     .map(|triangle| BvhNode {
                         vertex_indices: triangle,
-                        vertices: (
-                            vertices[triangle.0],
-                            vertices[triangle.1],
-                            vertices[triangle.2],
-                        ),
                         node_index: 0,
                         bounding_box: geo::triangle_bounding_box(
                             &vertices[triangle.0],
@@ -683,7 +680,43 @@ fn generate_raycasts<V: Point>(grid: &Grid<V>) -> Vec<RaycastData> {
 
 #[cfg(test)]
 mod tests {
+    use crate::{generate_sdf, AccelerationMethod};
+
     use super::*;
+
+    #[test]
+    fn test_generate_grid() {
+        // make sure generate_grid_sdf returns the same result as generate_sdf.
+        // assumes generate_sdf is properly tested and correct.
+        let vertices: Vec<[f32; 3]> = vec![[0., 1., 0.], [1., 2., 3.], [1., 3., 4.], [2., 0., 0.]];
+        let indices: Vec<u32> = vec![0, 1, 2, 1, 2, 3];
+        let grid = Grid::from_bounding_box(&[0., 0., 0.], &[5., 5., 5.], [5, 5, 5]);
+        let mut query_points = Vec::new();
+        for x in 0..grid.get_cell_count()[0] {
+            for y in 0..grid.get_cell_count()[1] {
+                for z in 0..grid.get_cell_count()[2] {
+                    query_points.push(grid.get_cell_center(&[x, y, z]));
+                }
+            }
+        }
+        let sdf = generate_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(&indices)),
+            &query_points,
+            AccelerationMethod::None(SignMethod::Raycast),
+        );
+        let grid_sdf = generate_grid_sdf(
+            &vertices,
+            crate::Topology::TriangleList(Some(&indices)),
+            &grid,
+            SignMethod::Raycast,
+        );
+
+        // Test against generate_sdf
+        for (i, (sdf, grid_sdf)) in sdf.iter().zip(grid_sdf.iter()).enumerate() {
+            assert_eq!(sdf, grid_sdf, "i: {}", i);
+        }
+    }
 
     /// Test continuity.
     /// Only valid for watertight meshes and Raycast method.
