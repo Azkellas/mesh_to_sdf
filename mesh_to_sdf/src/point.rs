@@ -56,7 +56,7 @@ pub trait Point: Sized + Copy + Sync + Send + std::fmt::Debug + PartialEq {
     fn y_mut(&mut self) -> &mut f32;
     /// Get the z coordinate.
     fn z_mut(&mut self) -> &mut f32;
-    
+
     /// Get the coordinate at index `i`.
     fn get(&self, i: usize) -> f32 {
         match i {

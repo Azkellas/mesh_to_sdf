@@ -261,6 +261,8 @@ fn compare_distances(a: f32, b: f32) -> std::cmp::Ordering {
 }
 
 #[derive(Clone)]
+// TODO: split in BvhNode / RtreeNode / RtreeBvhNode to avoid allocating for nothing.
+// This is because bvh only needs indices but rtree needs vertices.
 struct BvhNode<V: Point> {
     vertex_indices: (usize, usize, usize),
     vertices: (V, V, V),
@@ -527,7 +529,7 @@ where
     V: Point,
     I: Copy + Into<u32> + Sync + Send,
 {
-    let bvh_nodes = Topology::get_triangles(vertices, &indices)
+    let bvh_nodes = Topology::get_triangles(vertices, indices)
         .map(|triangle| BvhNode {
             vertex_indices: triangle,
             vertices: (
@@ -575,7 +577,7 @@ where
     V: Point,
     I: Copy + Into<u32> + Sync + Send,
 {
-    let mut bvh_nodes = Topology::get_triangles(vertices, &indices)
+    let mut bvh_nodes = Topology::get_triangles(vertices, indices)
         .map(|triangle| BvhNode {
             vertex_indices: triangle,
             vertices: (

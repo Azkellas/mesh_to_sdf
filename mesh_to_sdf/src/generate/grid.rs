@@ -95,6 +95,11 @@ where
                 let mut bvh_nodes = Topology::get_triangles(vertices, indices)
                     .map(|triangle| BvhNode {
                         vertex_indices: triangle,
+                        vertices: (
+                            vertices[triangle.0],
+                            vertices[triangle.1],
+                            vertices[triangle.2],
+                        ),
                         node_index: 0,
                         bounding_box: geo::triangle_bounding_box(
                             &vertices[triangle.0],
