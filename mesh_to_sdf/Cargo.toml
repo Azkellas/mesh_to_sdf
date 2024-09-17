@@ -1,6 +1,6 @@
 [package]
 name = "mesh_to_sdf"
-version = "0.3.0"
+version = "0.4.0"
 description = "Mesh to signed distance field (SDF) converter"
 edition = "2021"
 license = "MIT OR Apache-2.0"
