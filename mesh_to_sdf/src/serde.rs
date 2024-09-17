@@ -1,3 +1,36 @@
+//! Serialization and deserialization of signed distance fields.
+//!
+//!
+//! ## Saving to file
+//! ```no_run
+//! # use mesh_to_sdf::*;
+//! # let query_points = [cgmath::Vector3::new(0., 0., 0.)];
+//! # let distances = [1.];
+//! use mesh_to_sdf::serde::*;
+//! let ser = SerializeSdf::Generic(SerializeGeneric {
+//!     query_points: &query_points,
+//!     distances: &distances,
+//! });
+//! let path = "path/to/sdf.bin";
+//! save_to_file(&ser, path).expect("Failed to save sdf");
+//! ```
+//!
+//! ## Loading from file
+//!
+//! ```no_run
+//! # use mesh_to_sdf::*;
+//! use mesh_to_sdf::serde::*;
+//! let path = "path/to/sdf.bin";
+//! let deserialized = read_from_file::<cgmath::Vector3<f32>, _>(path).expect("Failed to read sdf");
+//! match deserialized {
+//!     DeserializeSdf::Generic(DeserializeGeneric { query_points, distances }) => {
+//!         // ...
+//!     },
+//!     DeserializeSdf::Grid(DeserializeGrid { grid, distances }) => {
+//!         // ...
+//!     },
+//! }
+//! ```
 use std::path::Path;
 
 use super::*;
@@ -91,7 +124,7 @@ pub enum DeserializeSdf<V: Point> {
     Grid(DeserializeGrid<V>),
 }
 
-/// Deserializd generic signed distance fields computed with `generate_sdf`.
+/// Deserialized generic signed distance fields computed with `generate_sdf`.
 /// Should be used with `DeserializeSdf::Generic`.
 #[derive(Deserialize)]
 #[serde(bound = "V: Serialize + DeserializeOwned")]
@@ -146,6 +179,7 @@ fn deserialize<V: Point + Serialize + DeserializeOwned>(
 ///
 /// ```no_run
 /// use mesh_to_sdf::*;
+/// use mesh_to_sdf::serde::*;
 /// let query_points = [cgmath::Vector3::new(0., 0., 0.)];
 /// let distances = [1.];
 /// let ser = SerializeSdf::Generic(SerializeGeneric {
@@ -168,6 +202,7 @@ pub fn save_to_file<V: Point + Serialize + DeserializeOwned, P: AsRef<Path>>(
 ///
 /// ```no_run
 /// use mesh_to_sdf::*;
+/// use mesh_to_sdf::serde::*;
 /// let path = "path/to/sdf.bin";
 /// let deserialized = read_from_file::<cgmath::Vector3<f32>, _>(path).expect("Failed to read sdf");
 /// match deserialized {

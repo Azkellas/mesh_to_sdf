@@ -1,5 +1,5 @@
 use glam::{Vec2, Vec3, Vec4};
-use mode::{BadMode, Mode};
+use mode::BadMode;
 use vertex::{Line, Triangle, Vertex};
 
 use crate::gltf::GltfData;
@@ -9,6 +9,7 @@ mod mode;
 mod vertex;
 
 pub use material::*;
+pub use mode::Mode;
 
 /// Geometry to be rendered with the given material.
 ///

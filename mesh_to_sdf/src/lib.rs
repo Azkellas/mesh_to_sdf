@@ -41,9 +41,11 @@
 //!     &vertices,
 //!     Topology::TriangleList(Some(&indices)),
 //!     &grid,
-//!     SignMethod::Normal, // How the sign is computed.
-//! );                      // Normal might leak negative distances outside the mesh
-//!                         // but works for all meshes, even surfaces.
+//!     SignMethod::Raycast, // How the sign is computed.
+//!                          // Raycast is robust but requires the mesh to be watertight.
+//!                          // and is more expensive.
+//!                          // Normal might leak negative distances outside the mesh
+//! );                       // but works for all meshes, even surfaces.
 //!
 //! for x in 0..cell_count[0] {
 //!     for y in 0..cell_count[1] {
@@ -64,7 +66,7 @@
 //! If the indices are not provided, they are supposed to be `0..vertices.len()`.
 //!
 //! For vertices, this library aims to be as generic as possible by providing a trait `Point` that can be implemented for any type.
-//! Implementations for most common math libraries are gated behind feature flags. By default, only `[f32; 3]` is provided.
+//! Implementations for most common math libraries are gated behind feature flags. By default, `[f32; 3]` and `nalgebra::[Point3, Vector3]` are provided.
 //! If you do not find your favorite library, feel free to implement the trait for it and submit a PR or open an issue.
 //!
 //! ---
@@ -77,22 +79,26 @@
 //! - [`SignMethod::Normal`]: uses the normals of the triangles to estimate the sign by doing a dot product with the direction of the query point.
 //!     It works for non-watertight meshes but might leak negative distances outside the mesh.
 //!
-//! Both methods have roughly the same performances, depending on the acceleration structure used for generic queries.
+//! Using `Raycast` is slower than `Normal` but gives better results. Performances depends on the triangle count and method used.
+//! On big dataset, `Raycast` is 5-10% slower for grid generation and rtree based methods. On smaller dataset, the difference can be worse
+//! depending on whether the query is triangle intensive or query point intensive.
+//! For bvh the difference is negligible between the two methods.
 //!
 //! ---
 //!
 //! #### Acceleration structures
 //!
 //! For generic queries, you can use acceleration structures to speed up the computation.
-//! - [`AccelerationMethod::None`]: no acceleration structure. This is the slowest method but requires no extra memory.
+//! - [`AccelerationMethod::None`]: no acceleration structure. This is the slowest method but requires no extra memory. Scales really poorly.
 //! - [`AccelerationMethod::Bvh`]: Bounding Volume Hierarchy. Accepts a `SignMethod`.
-//! - [`AccelerationMethod::Rtree`]: R-tree. Only compatible with `SignMethod::Normal`. The fastest method assuming you have more than a couple thousands of queries.
-//! - [`AccelerationMethod::RtreeBvh`] (default): Uses R-tree for nearest neighbor search and Bvh for raycasting.
+//! - [`AccelerationMethod::Rtree`]: R-tree. Uses `SignMethod::Normal`. The fastest method assuming you have more than a couple thousands of queries.
+//! - [`AccelerationMethod::RtreeBvh`] (default): Uses R-tree for nearest neighbor search and Bvh for `SignMethod::Raycast`. 5-10% slower than `Rtree` on big datasets.
 //!
 //! If your mesh is watertight and you have more than a thousand queries/triangles, you should use `AccelerationMethod::RtreeBvh` for best performances.
 //! If it's not watertight, you can use `AccelerationMethod::Rtree` instead.
 //!
-//! `Rtree` methods are ~4x faster than `Bvh` methods for big enough data. `AccelerationMethod::None` scales really poorly and should be avoided unless for small datasets or if you're really tight on memory.
+//! `Rtree` methods are 3-4x faster than `Bvh` methods for big enough data. On small meshes, the difference is negligible.
+//! `AccelerationMethod::None` scales really poorly and should be avoided unless for small datasets or if you're really tight on memory.
 //!
 //! ---
 //!
@@ -111,18 +117,14 @@
 //! - [nalgebra] ([`nalgebra::Vector3<f32>`] and [`nalgebra::Point3<f32>`])
 //! - `[f32; 3]`
 //!
+//! [nalgebra] is always available as it's used internally in the bvh tree.
+//!
 //! ---
 //!
 //! #### Serialization
 //!
 //! If you want to serialize and deserialize signed distance fields, you need to enable the `serde` feature.
 //! This features also provides helpers to save and load signed distance fields to and from files via `save_to_file` and `read_from_file`.
-//!
-//! ---
-//!
-//! #### Benchmarks
-//!
-//! [`SignMethod::Raycast`] is slightly slower than [`SignMethod::Normal`] but is robust and should be used whenever possible (~1% in [`generate_grid_sdf`], ~10% in [`generate_sdf`]).
 use std::boxed::Box;
 
 use itertools::Itertools;
@@ -139,14 +141,11 @@ mod grid;
 mod point;
 
 #[cfg(feature = "serde")]
-mod serde;
+pub mod serde;
 
 pub use generate::grid::generate_grid_sdf;
 pub use grid::{Grid, SnapResult};
 pub use point::Point;
-
-#[cfg(feature = "serde")]
-pub use serde::*;
 
 /// Mesh Topology: how indices are stored.
 #[derive(Copy, Clone)]
@@ -296,7 +295,7 @@ pub fn generate_sdf<V, I>(
     acceleration_method: AccelerationMethod,
 ) -> Vec<f32>
 where
-    V: Point,
+    V: Point + 'static,
     I: Copy + Into<u32> + Sync + Send,
 {
     match acceleration_method {

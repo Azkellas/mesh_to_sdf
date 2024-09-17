@@ -179,7 +179,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use gltf::mesh::Mode;
+    use model::Mode;
 
     use super::*;
 

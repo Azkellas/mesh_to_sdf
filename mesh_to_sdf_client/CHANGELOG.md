@@ -1,6 +1,10 @@
 # Changelog
 
-## [0.3.0]
+## [0.4.0] - 2024-09-06
+
+Update `mesh_to_sdf` dependency to `0.4.0`.
+
+## [0.3.0] - 2024-09-06
 
 ### Added
 

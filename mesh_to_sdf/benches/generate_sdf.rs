@@ -79,13 +79,24 @@ fn criterion_benchmark(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("generate_sdf_bvh", |b| {
+    c.bench_function("generate_sdf_bvh_normal", |b| {
         b.iter(|| {
             mesh_to_sdf::generate_sdf(
                 black_box(&vertices),
                 black_box(Topology::TriangleList(Some(indices))),
                 black_box(&query_points),
                 black_box(AccelerationMethod::Bvh(SignMethod::Normal)),
+            );
+        });
+    });
+
+    c.bench_function("generate_sdf_bvh_raycast", |b| {
+        b.iter(|| {
+            mesh_to_sdf::generate_sdf(
+                black_box(&vertices),
+                black_box(Topology::TriangleList(Some(indices))),
+                black_box(&query_points),
+                black_box(AccelerationMethod::Bvh(SignMethod::Raycast)),
             );
         });
     });
@@ -126,13 +137,24 @@ fn criterion_benchmark(c: &mut Criterion) {
         }
     }
 
-    c.bench_function("generate_sdf_bvh_big", |b| {
+    c.bench_function("generate_sdf_bvh_normal_big", |b| {
         b.iter(|| {
             mesh_to_sdf::generate_sdf(
                 black_box(&vertices),
                 black_box(mesh_to_sdf::Topology::TriangleList(Some(indices))),
                 black_box(&query_points),
                 black_box(AccelerationMethod::Bvh(SignMethod::Normal)),
+            );
+        });
+    });
+
+    c.bench_function("generate_sdf_bvh_raycast_big", |b| {
+        b.iter(|| {
+            mesh_to_sdf::generate_sdf(
+                black_box(&vertices),
+                black_box(mesh_to_sdf::Topology::TriangleList(Some(indices))),
+                black_box(&query_points),
+                black_box(AccelerationMethod::Bvh(SignMethod::Raycast)),
             );
         });
     });

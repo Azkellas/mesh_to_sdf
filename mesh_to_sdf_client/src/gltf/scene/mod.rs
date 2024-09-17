@@ -6,10 +6,9 @@ mod light;
 pub mod model;
 
 pub use camera::Camera;
+use gltf::scene::Node;
 pub use light::Light;
 pub use model::{GltfModel, Material};
-
-use gltf::scene::Node;
 
 use super::utils::transform_to_matrix;
 

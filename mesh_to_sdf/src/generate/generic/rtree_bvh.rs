@@ -1,7 +1,10 @@
 //! Module containing the `generate_sdf_rtree_bvh` function.
 
+use std::sync::Arc;
+
 use bvh::{bounding_hierarchy::BoundingHierarchy, bvh::Bvh};
 use itertools::Itertools;
+use parking_lot::Mutex;
 use rayon::prelude::*;
 
 use crate::{geo, Point, Topology};
@@ -79,10 +82,10 @@ pub fn generate_sdf_rtree_bvh<V, I>(
     query_points: &[V],
 ) -> Vec<f32>
 where
-    V: Point,
+    V: Point + 'static,
     I: Copy + Into<u32> + Sync + Send,
 {
-    let mut rtree_bvh_nodes = Topology::get_triangles(vertices, indices)
+    let rtree_bvh_nodes = Topology::get_triangles(vertices, indices)
         .map(|triangle| RtreeBvhNode {
             vertices: (
                 vertices[triangle.0],
@@ -102,8 +105,20 @@ where
         return vec![];
     }
 
-    let rtree = rstar::RTree::bulk_load(rtree_bvh_nodes.clone());
-    let bvh = Bvh::build_par(&mut rtree_bvh_nodes);
+    // Since rtree builds in a single thread, we can build both trees at the same time.
+    let bvh_nodes = Arc::new(Mutex::new(rtree_bvh_nodes.clone()));
+    let bvh = {
+        let bvh_nodes = Arc::clone(&bvh_nodes);
+        std::thread::spawn(move || {
+            let mut bvh_nodes = bvh_nodes.lock();
+            Bvh::build_par(&mut bvh_nodes)
+        })
+    };
+
+    let rtree = rstar::RTree::bulk_load(rtree_bvh_nodes);
+    let bvh = bvh.join().unwrap();
+
+    let bvh_nodes = bvh_nodes.lock();
 
     query_points
         .par_iter()
@@ -131,7 +146,7 @@ where
                     direction,
                 );
                 let mut intersection_count = 0;
-                let hitcast = bvh.traverse(&ray, &rtree_bvh_nodes);
+                let hitcast = bvh.traverse(&ray, &bvh_nodes);
                 for bvh_node in hitcast {
                     let a = &bvh_node.vertices.0;
                     let b = &bvh_node.vertices.1;
