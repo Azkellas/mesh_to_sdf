@@ -83,7 +83,7 @@ impl SdfRenderPass {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: wgpu::BufferSize::new(
-                            std::mem::size_of::<SdfUniforms>() as _
+                            core::mem::size_of::<SdfUniforms>() as _,
                         ),
                     },
                     count: None,
@@ -136,7 +136,7 @@ impl SdfRenderPass {
     ) -> Result<Self> {
         let sdf_bind_group_layout = Self::get_bind_group_layout(device);
 
-        let render_pipeline = SdfRenderPass::create_pipeline(
+        let render_pipeline = Self::create_pipeline(
             device,
             view_format,
             camera,
@@ -144,14 +144,14 @@ impl SdfRenderPass {
             settings_bind_group_layout,
         )?;
 
-        Ok(SdfRenderPass {
+        Ok(Self {
             render_pipeline,
             sdf_bind_group_layout,
         })
     }
 
     pub fn run(
-        &mut self,
+        &self,
         command_encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         depth_map: &Texture,

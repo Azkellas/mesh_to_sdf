@@ -2,9 +2,9 @@ mod gltf_data;
 
 use std::sync::{Arc, RwLock};
 
+use glam::Mat4;
 pub use gltf_data::GltfData;
 
-use glam::*;
 use gltf::scene::Transform;
 use image::GrayImage;
 use itertools::Itertools;
@@ -31,12 +31,12 @@ pub fn get_rgb_textures(doc: &gltf::Document) -> Vec<gltf::Texture> {
     // append normal and emissives
     normal_textures
         .chain(emissive_textures)
-        .unique_by(|tex| tex.index())
+        .unique_by(gltf::Texture::index)
         .collect()
 }
 
 /// Load all rgb images from the glTF document.
-pub fn load_rgb_images(doc: &gltf::Document, data: Arc<RwLock<GltfData>>) {
+pub fn load_rgb_images(doc: &gltf::Document, data: &Arc<RwLock<GltfData>>) {
     // Load rgb images
     get_rgb_textures(doc).par_iter().for_each(|tex| {
         let texture = {
@@ -63,7 +63,7 @@ pub fn get_rgba_textures(doc: &gltf::Document) -> Vec<gltf::Texture> {
 }
 
 /// Load all rgba images from the glTF document.
-pub fn load_rbga_images(doc: &gltf::Document, data: Arc<RwLock<GltfData>>) {
+pub fn load_rbga_images(doc: &gltf::Document, data: &Arc<RwLock<GltfData>>) {
     // Load rgb images
     get_rgba_textures(doc).par_iter().for_each(|tex| {
         let texture = {
@@ -96,12 +96,12 @@ pub fn get_gray_textures(doc: &gltf::Document) -> Vec<gltf::Texture> {
     // Only keep unique textures indices.
     occlusion_textures
         .chain(metallic_roughness_textures)
-        .unique_by(|tex| tex.index())
+        .unique_by(gltf::Texture::index)
         .collect()
 }
 
 /// Load all rgba images from the glTF document.
-pub fn load_gray_images(doc: &gltf::Document, data: Arc<RwLock<GltfData>>) {
+pub fn load_gray_images(doc: &gltf::Document, data: &Arc<RwLock<GltfData>>) {
     // Load rgb images
     get_gray_textures(doc).par_iter().for_each(|tex| {
         let texture = {
@@ -127,8 +127,8 @@ pub fn load_gray_images(doc: &gltf::Document, data: Arc<RwLock<GltfData>>) {
 }
 
 /// Load all images from the glTF document.
-pub fn load_all_images(doc: &gltf::Document, data: Arc<RwLock<GltfData>>) {
-    load_rgb_images(doc, data.clone());
-    load_rbga_images(doc, data.clone());
-    load_gray_images(doc, data.clone());
+pub fn load_all_images(doc: &gltf::Document, data: &Arc<RwLock<GltfData>>) {
+    load_rgb_images(doc, data);
+    load_rbga_images(doc, data);
+    load_gray_images(doc, data);
 }

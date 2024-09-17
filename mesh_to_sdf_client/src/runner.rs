@@ -88,7 +88,7 @@ struct SurfaceWrapper {
 
 impl SurfaceWrapper {
     /// Create a new surface wrapper with no surface or configuration.
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             surface: None,
             config: None,
@@ -172,7 +172,7 @@ impl SurfaceWrapper {
     }
 
     /// Acquire the next surface texture.
-    fn acquire(&mut self, context: &ExampleContext) -> wgpu::SurfaceTexture {
+    fn acquire(&self, context: &ExampleContext) -> wgpu::SurfaceTexture {
         let surface = self.surface.as_ref().unwrap();
 
         match surface.get_current_texture() {
@@ -203,7 +203,7 @@ impl SurfaceWrapper {
         self.surface = None;
     }
 
-    fn get(&self) -> Option<&wgpu::Surface> {
+    const fn get(&self) -> Option<&wgpu::Surface> {
         self.surface.as_ref()
     }
 
@@ -294,6 +294,8 @@ impl ExampleContext {
 }
 
 /// Initialize wgpu and run the app.
+#[expect(clippy::future_not_send)]
+#[expect(clippy::too_many_lines)]
 async fn run(
     // event_loop: EventLoop<()>,
     // window: Rc<Window>,
@@ -301,7 +303,7 @@ async fn run(
 ) {
     let window_loop = EventLoopWrapper::new(SdfProgram::get_name());
     let mut surface = SurfaceWrapper::new();
-    let context = ExampleContext::init_async(&mut surface, window_loop.window.clone()).await;
+    let context = ExampleContext::init_async(&mut surface, Arc::clone(&window_loop.window)).await;
 
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
@@ -328,8 +330,8 @@ async fn run(
 
     let size = window_loop.window.inner_size();
 
-    #[allow(clippy::let_unit_value)]
-    let _ = (event_loop_function)(
+    #[expect(clippy::let_underscore_must_use)]
+    let _: bool = (event_loop_function)(
         window_loop.event_loop,
         move |event: Event<()>, target: &winit::event_loop::EventLoopWindowTarget<()>| {
             // Have the closure take ownership of the resources.
@@ -338,12 +340,14 @@ async fn run(
             // let _ = (&instance, &adapter, &runner_data, &egui_state);
 
             if let Event::WindowEvent {
-                event: ref window_event,
+                event: window_event,
                 ..
             } = &event
             {
                 // ignore event response.
-                let _ = egui_state.on_window_event(&window_loop.window, window_event);
+                let _: bool = egui_state
+                    .on_window_event(&window_loop.window, window_event)
+                    .consumed;
 
                 if window_event == &winit::event::WindowEvent::CloseRequested {
                     target.exit();
@@ -351,7 +355,7 @@ async fn run(
             }
 
             if SurfaceWrapper::start_condition(&event) {
-                surface.resume(&context, window_loop.window.clone(), true);
+                surface.resume(&context, Arc::clone(&window_loop.window), true);
 
                 if program.is_none() {
                     program = Some(
@@ -416,9 +420,9 @@ async fn run(
 
                 program.process_input(&input);
 
-                if let Some(camera) = program.get_camera() {
-                    camera.update(&input, [size.width as f32, size.height as f32]);
-                };
+                program
+                    .get_camera()
+                    .update(&input, [size.width as f32, size.height as f32]);
 
                 // window_loop.window.request_redraw();
 
@@ -548,7 +552,8 @@ async fn run(
                 egui_state.handle_platform_output(&window_loop.window, output.platform_output);
             }
         },
-    );
+    )
+    .is_ok();
 }
 
 /// Create the window depending on the platform.

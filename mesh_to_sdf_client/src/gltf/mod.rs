@@ -146,7 +146,7 @@ where
         data.models.insert(model_id, Arc::new(model));
     });
 
-    load_all_images(&doc, data.clone());
+    load_all_images(&doc, &data);
 
     let materials = doc.materials().collect_vec();
     materials.par_iter().for_each(|mat| {
@@ -169,7 +169,7 @@ where
             .file_stem()
             .and_then(|f| f.to_str())
             .unwrap_or("Gltf");
-        res.push(Scene::load(scene_name, scene));
+        res.push(Scene::load(scene_name, &scene));
     }
 
     let data = data.read().unwrap().clone();
@@ -179,7 +179,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::model::Mode;
+    use gltf::mesh::Mode;
+
     use super::*;
 
     macro_rules! assert_delta {

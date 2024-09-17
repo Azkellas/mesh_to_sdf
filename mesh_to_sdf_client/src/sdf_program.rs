@@ -8,7 +8,7 @@ use winit_input_helper::WinitInputHelper;
 
 use egui_gizmo::GizmoMode;
 
-use crate::camera::*;
+use crate::camera::CameraData;
 use crate::cubemap::Cubemap;
 use crate::frame_rate::FrameRate;
 
@@ -31,7 +31,7 @@ struct ModelInfo {
 }
 
 struct LastRunInfo {
-    pub time: std::time::Duration,
+    pub time: core::time::Duration,
     pub size: [u32; 3],
 }
 
@@ -57,10 +57,10 @@ impl TryFrom<u32> for RaymarchMode {
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(RaymarchMode::Snap),
-            1 => Ok(RaymarchMode::Trilinear),
-            2 => Ok(RaymarchMode::Tetrahedral),
-            3 => Ok(RaymarchMode::SnapStylized),
+            0 => Ok(Self::Snap),
+            1 => Ok(Self::Trilinear),
+            2 => Ok(Self::Tetrahedral),
+            3 => Ok(Self::SnapStylized),
             _ => Err(()),
         }
     }
@@ -181,7 +181,7 @@ pub struct SdfProgram {
 }
 
 impl SdfProgram {
-    pub fn optional_features() -> wgpu::Features {
+    pub const fn optional_features() -> wgpu::Features {
         wgpu::Features::empty()
     }
 
@@ -200,12 +200,12 @@ impl SdfProgram {
         }
     }
 
-    pub fn required_features() -> wgpu::Features {
+    pub const fn required_features() -> wgpu::Features {
         wgpu::Features::CLEAR_TEXTURE
     }
 
-    #[allow(clippy::unused_self)]
     pub fn process_input(&mut self, input: &WinitInputHelper) -> bool {
+        #[expect(clippy::useless_let_if_seq)]
         let mut captured = false;
 
         if input.held_control() && input.key_released(winit::keyboard::KeyCode::KeyZ) {
@@ -227,10 +227,11 @@ impl SdfProgram {
     }
 
     /// Get program name.
-    pub fn get_name() -> &'static str {
+    pub const fn get_name() -> &'static str {
         "SDF Client"
     }
 
+    #[expect(clippy::too_many_lines)]
     pub fn init(
         surface: &wgpu::Surface,
         device: &wgpu::Device,
@@ -336,7 +337,7 @@ impl SdfProgram {
             cube_map: cubemap_generation_pass,
         };
 
-        Ok(SdfProgram {
+        Ok(Self {
             pass,
             settings,
             frame_rate: FrameRate::new(100),
@@ -467,7 +468,7 @@ impl SdfProgram {
         }
     }
 
-    pub fn render(&mut self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue) {
+    pub fn render(&self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue) {
         // Clear textures.
         {
             let mut command_encoder =
@@ -589,14 +590,14 @@ impl SdfProgram {
         }
     }
 
-    pub fn get_camera(&mut self) -> Option<&mut crate::camera_control::CameraLookAt> {
-        Some(&mut self.camera.camera.look_at)
+    pub fn get_camera(&mut self) -> &mut crate::camera_control::CameraLookAt {
+        &mut self.camera.camera.look_at
     }
 
     fn load_gltf(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Result<()> {
-        match self.parameters.file_name {
+        match &self.parameters.file_name {
             None => anyhow::bail!("No file to load"),
-            Some(ref path) => {
+            Some(path) => {
                 // a gltf scene can contain multiple models.
                 // we merge them in a single sdf.
                 let (models, instances) = gltf::load_scene(device, queue, path)?;
@@ -669,10 +670,10 @@ impl SdfProgram {
                     &self.models,
                     &self.model_instances,
                     &self.pass.cube_map,
-                )?;
-                Ok(())
+                );
             }
         }
+        Ok(())
     }
 
     fn generate_sdf(&mut self, device: &wgpu::Device) -> Result<()> {
@@ -710,7 +711,7 @@ impl SdfProgram {
             &end_cell,
             &self.parameters.cell_count,
             self.parameters.sdf_sign_method,
-        )?);
+        ));
 
         self.last_run_info = Some(LastRunInfo {
             time: self.sdf.as_ref().unwrap().time_taken,

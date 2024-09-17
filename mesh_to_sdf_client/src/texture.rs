@@ -1,5 +1,6 @@
 use crate::utility::mip_generation;
 
+#[expect(clippy::struct_field_names)]
 #[derive(Debug)]
 pub struct Texture {
     pub texture: wgpu::Texture,

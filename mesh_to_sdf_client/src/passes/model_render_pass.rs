@@ -15,7 +15,7 @@ pub struct ModelRenderPass {
     pub textures_bind_group_layout: wgpu::BindGroupLayout,
     pub shadow_bind_group_layout: Option<wgpu::BindGroupLayout>,
     pub shadow_bind_group: Option<wgpu::BindGroup>,
-    backface_culling: bool,
+    pub backface_culling: bool,
 }
 
 impl ModelRenderPass {
@@ -103,7 +103,7 @@ impl ModelRenderPass {
         Ok(())
     }
 
-    pub fn is_culling_backfaces(&self) -> bool {
+    pub const fn is_culling_backfaces(&self) -> bool {
         self.backface_culling
     }
     fn create_shadow_bind_group(
@@ -221,7 +221,7 @@ impl ModelRenderPass {
 
         let model_bind_group_layout = Self::create_model_bind_group_layout(device);
 
-        let render_pipeline = ModelRenderPass::create_pipeline(
+        let render_pipeline = Self::create_pipeline(
             device,
             view_format,
             &model_bind_group_layout,
@@ -231,7 +231,7 @@ impl ModelRenderPass {
             backface_culling,
         )?;
 
-        Ok(ModelRenderPass {
+        Ok(Self {
             render_pipeline,
             model_bind_group_layout,
             textures_bind_group_layout: render_textures_bind_group_layout,
@@ -242,7 +242,7 @@ impl ModelRenderPass {
     }
 
     pub fn run(
-        &mut self,
+        &self,
         command_encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         depth_map: &Texture,

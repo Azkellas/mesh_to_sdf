@@ -84,7 +84,7 @@ impl Scene {
         }
     }
 
-    pub(crate) fn load(file_name: &str, gltf_scene: gltf::Scene) -> Self {
+    pub(crate) fn load(file_name: &str, gltf_scene: &gltf::Scene) -> Self {
         let mut scene = Self::new(gltf_scene.name(), gltf_scene.extras().clone());
 
         for node in gltf_scene.nodes() {
@@ -127,12 +127,12 @@ impl Scene {
 
         // Load camera
         if let Some(camera) = node.camera() {
-            self.cameras.push(Camera::load(camera, &transform));
+            self.cameras.push(Camera::load(&camera, &transform));
         }
 
         // Load light
         if let Some(light) = node.light() {
-            self.lights.push(Light::load(light, &transform));
+            self.lights.push(Light::load(&light, &transform));
         }
 
         // Load model

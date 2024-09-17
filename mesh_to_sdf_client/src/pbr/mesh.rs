@@ -14,7 +14,7 @@ impl MeshVertex {
     const ATTRIBUTES: [wgpu::VertexAttribute; 3] =
         wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2];
 
-    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+    pub const fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
             array_stride: 8 * 4,
             step_mode: wgpu::VertexStepMode::Vertex,
@@ -48,7 +48,7 @@ impl Mesh {
         });
 
         let index_count = indices.len() as u32;
-        Mesh {
+        Self {
             vertices,
             indices,
 

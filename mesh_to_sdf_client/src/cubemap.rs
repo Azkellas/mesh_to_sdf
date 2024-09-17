@@ -1,4 +1,3 @@
-use anyhow::Result;
 use hashbrown::HashMap;
 
 use crate::{
@@ -41,7 +40,7 @@ impl Cubemap {
         let depth = Texture::create_depth_texture(device, size3d, "mesh_cubemap_depth");
         let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Cubemap Uniform Buffer"),
-            size: 6 * 16 * std::mem::size_of::<f32>() as u64,
+            size: 6 * 16 * core::mem::size_of::<f32>() as u64,
             mapped_at_creation: false,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
@@ -131,40 +130,42 @@ impl Cubemap {
     }
 
     /// Get the bind group layout for the cubemap.
-    pub fn get_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+    pub const fn get_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
         &self.bind_group_layout
     }
 
     /// Get the bind group for the cubemap.
-    pub fn get_bind_group(&self) -> &wgpu::BindGroup {
+    pub const fn get_bind_group(&self) -> &wgpu::BindGroup {
         &self.bind_group
     }
 
     /// Get the albedo texture of the cubemap.
-    pub fn get_albedo(&self) -> &Texture {
+    pub const fn get_albedo(&self) -> &Texture {
         &self.albedo
     }
 
     /// Get the depth texture of the cubemap.
-    pub fn get_depth(&self) -> &Texture {
+    pub const fn get_depth(&self) -> &Texture {
         &self.depth
     }
 
     /// Get the uniform buffer for the cubemap.
-    pub fn get_uniforms(&self) -> &wgpu::Buffer {
+    pub const fn get_uniforms(&self) -> &wgpu::Buffer {
         &self.uniforms
     }
 
     /// Generate the cubemap by rendering the models from the outside.
+    #[expect(clippy::similar_names)]
+    #[expect(clippy::too_many_lines)]
     pub fn generate(
-        &mut self,
+        &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         bounding_box: [f32; 6],
         models: &HashMap<usize, Model>,
         model_instances: &[ModelInstance],
         cubemap_pass: &CubemapGenerationPass,
-    ) -> Result<()> {
+    ) {
         let size = [2048, 2048];
 
         let mut camera = CameraData::new(device);
@@ -307,7 +308,5 @@ impl Cubemap {
         });
 
         queue.write_buffer(&self.uniforms, 0, bytemuck::bytes_of(&uniforms));
-
-        Ok(())
     }
 }

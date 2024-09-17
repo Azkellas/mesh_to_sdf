@@ -1,5 +1,5 @@
 use super::GltfData;
-use glam::*;
+use glam::Vec4;
 use image::{GrayImage, RgbaImage};
 use std::sync::Arc;
 
@@ -36,7 +36,7 @@ pub struct PbrMaterial {
 }
 
 impl PbrMaterial {
-    pub(crate) fn load(pbr: gltf::material::PbrMetallicRoughness, data: &GltfData) -> Self {
+    pub(crate) fn load(pbr: &gltf::material::PbrMetallicRoughness, data: &GltfData) -> Self {
         let mut material = Self {
             base_color_factor: pbr.base_color_factor().into(),
             ..Default::default()
@@ -63,7 +63,7 @@ impl PbrMaterial {
 
 impl Default for PbrMaterial {
     fn default() -> Self {
-        PbrMaterial {
+        Self {
             base_color_factor: Vec4::ONE,
             base_color_texture: None,
             metallic_factor: 0.,

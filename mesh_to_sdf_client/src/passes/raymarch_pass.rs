@@ -85,7 +85,7 @@ impl RaymarchRenderPass {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: wgpu::BufferSize::new(
-                            std::mem::size_of::<SdfUniforms>() as _
+                            core::mem::size_of::<SdfUniforms>() as _,
                         ),
                     },
                     count: None,
@@ -208,7 +208,7 @@ impl RaymarchRenderPass {
 
         let raymarch_bind_group_layout = Self::get_bind_group_layout(device);
 
-        let render_pipeline = RaymarchRenderPass::create_pipeline(
+        let render_pipeline = Self::create_pipeline(
             device,
             view_format,
             &raymarch_bind_group_layout,
@@ -218,7 +218,7 @@ impl RaymarchRenderPass {
             cubemap_bind_group_layout,
         )?;
 
-        Ok(RaymarchRenderPass {
+        Ok(Self {
             render_pipeline,
             raymarch_bind_group_layout,
             shadow_bind_group_layout: Some(render_shadow_bind_group_layout),
@@ -227,7 +227,7 @@ impl RaymarchRenderPass {
     }
 
     pub fn run(
-        &mut self,
+        &self,
         command_encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         camera: &CameraData,

@@ -6,7 +6,7 @@ impl Point for glam::Vec3 {
 
     /// Create a new point.
     fn new(x: f32, y: f32, z: f32) -> Self {
-        glam::Vec3::new(x, y, z)
+        Self::new(x, y, z)
     }
 
     /// Get the x coordinate.
@@ -46,19 +46,19 @@ impl Point for glam::Vec3 {
     }
     /// Dot product of two points.
     fn dot(&self, other: &Self) -> f32 {
-        glam::Vec3::dot(*self, *other)
+        Self::dot(*self, *other)
     }
     /// Cross product of two points.
     fn cross(&self, other: &Self) -> Self {
-        glam::Vec3::cross(*self, *other)
+        Self::cross(*self, *other)
     }
     /// Length of the point.
     fn length(&self) -> f32 {
-        glam::Vec3::length(*self)
+        Self::length(*self)
     }
     /// Distance between two points.
     fn dist(&self, other: &Self) -> f32 {
-        glam::Vec3::distance(*self, *other)
+        Self::distance(*self, *other)
     }
     /// Multiply a point by a scalar.
     fn fmul(&self, other: f32) -> Self {

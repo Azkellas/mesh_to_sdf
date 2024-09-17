@@ -1,4 +1,4 @@
-use glam::*;
+use glam::{Mat4, Vec2, Vec3};
 use gltf::camera::Projection as GltfProjection;
 
 /// Contains camera properties.
@@ -86,7 +86,7 @@ impl Camera {
         res.truncate() / res.w
     }
 
-    pub(crate) fn load(gltf_cam: gltf::Camera, transform: &Mat4) -> Self {
+    pub(crate) fn load(gltf_cam: &gltf::Camera, transform: &Mat4) -> Self {
         let mut cam = Self {
             transform: *transform,
             ..Default::default()
@@ -118,7 +118,7 @@ impl Camera {
 
 impl Default for Camera {
     fn default() -> Self {
-        Camera {
+        Self {
             name: None,
             extras: None,
             transform: Mat4::ZERO,

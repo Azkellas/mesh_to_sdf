@@ -64,7 +64,7 @@ impl ShadowMap {
             bind_group_layout: camera_bind_group_layout,
         };
 
-        ShadowMap {
+        Self {
             light: camera_data,
             texture: Texture::create_depth_texture(
                 device,

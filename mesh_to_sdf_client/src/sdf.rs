@@ -2,8 +2,6 @@ use itertools::Itertools;
 use mesh_to_sdf::SignMethod;
 use wgpu::util::DeviceExt;
 
-use anyhow::Result;
-
 use crate::passes::sdf_render_pass::SdfRenderPass;
 
 #[repr(C)]
@@ -28,7 +26,7 @@ pub struct Sdf {
     pub iso_limits: (f32, f32),
 
     pub bind_group: wgpu::BindGroup,
-    pub time_taken: std::time::Duration,
+    pub time_taken: core::time::Duration,
 }
 
 impl Sdf {
@@ -40,7 +38,7 @@ impl Sdf {
         end_cell: &glam::Vec3,
         cell_count: &[u32; 3],
         sign_method: SignMethod,
-    ) -> Result<Self> {
+    ) -> Self {
         let ucell_count = [
             cell_count[0] as usize,
             cell_count[1] as usize,
@@ -124,21 +122,21 @@ impl Sdf {
 
         let iso_limits = data.iter().copied().minmax().into_option().unwrap();
 
-        Ok(Self {
+        Self {
             uniforms,
             uniforms_buffer,
             data,
             data_buffer,
             ordered_indices,
             ordered_buffer,
-            bind_group,
             grid,
             iso_limits,
+            bind_group,
             time_taken,
-        })
+        }
     }
 
-    pub fn get_cell_count(&self) -> u32 {
+    pub const fn get_cell_count(&self) -> u32 {
         self.uniforms.cell_count[0] * self.uniforms.cell_count[1] * self.uniforms.cell_count[2]
     }
 }

@@ -4,7 +4,7 @@ use std::fmt;
 ///
 /// To find more information for each mode and how to render them check
 /// [Khronos Primitive Documentation](https://www.khronos.org/opengl/wiki/Primitive).
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum Mode {
     /// Corresponds to `GL_POINTS`.
     Points,

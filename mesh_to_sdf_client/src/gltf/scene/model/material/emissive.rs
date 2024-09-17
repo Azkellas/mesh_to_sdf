@@ -1,4 +1,4 @@
-use glam::*;
+use glam::Vec3;
 use image::RgbImage;
 use std::sync::Arc;
 
