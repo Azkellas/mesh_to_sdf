@@ -1,6 +1,6 @@
 //! Module containing the `generate_sdf_bvh` function.
 
-use std::cmp::Ordering;
+use core::cmp::Ordering;
 
 use bvh::{bounding_hierarchy::BoundingHierarchy, bvh::Bvh};
 use itertools::Itertools;
@@ -12,7 +12,7 @@ use crate::{bvh_ext::BvhDistance, compare_distances, geo, Point, SignMethod, Top
 /// Public in the crate so that the grid generation can use it.
 /// `RtreeBvh` uses its own version of this struct to be able to implement the `RTreeObject` trait.
 #[derive(Clone)]
-pub(crate) struct BvhNode<V: Point> {
+pub struct BvhNode<V: Point> {
     pub vertex_indices: (usize, usize, usize),
     pub node_index: usize,
     pub bounding_box: (V, V),
@@ -49,7 +49,7 @@ impl<V: Point> bvh::bounding_hierarchy::BHShape<f32, 3> for BvhNode<V> {
 ///
 /// Returns a vector of signed distances.
 /// Queries outside the mesh will have a positive distance, and queries inside the mesh will have a negative distance.
-pub(crate) fn generate_sdf_bvh<V, I>(
+pub fn generate_sdf_bvh<V, I>(
     vertices: &[V],
     indices: Topology<I>,
     query_points: &[V],

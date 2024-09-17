@@ -21,7 +21,7 @@ where
         let x = generator(0);
         let y = generator(1);
         let z = generator(2);
-        PointWrapper(V::new(x, y, z))
+        Self(V::new(x, y, z))
     }
 
     fn nth(&self, index: usize) -> Self::Scalar {
@@ -84,7 +84,7 @@ impl<V: Point> rstar::PointDistance for RtreeNode<V> {
 ///
 /// This method is only compatible with normal sign method.
 /// If you want to use raycasting, use `AccelerationMethod::RtreeBvh` instead.
-pub(crate) fn generate_sdf_rtree<V, I>(
+pub fn generate_sdf_rtree<V, I>(
     vertices: &[V],
     indices: Topology<I>,
     query_points: &[V],

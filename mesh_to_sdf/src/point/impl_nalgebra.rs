@@ -6,7 +6,7 @@ impl Point for nalgebra::Point3<f32> {
 
     /// Create a new point.
     fn new(x: f32, y: f32, z: f32) -> Self {
-        nalgebra::Point3::new(x, y, z)
+        Self::new(x, y, z)
     }
 
     /// Get the x coordinate.
@@ -43,7 +43,7 @@ impl Point for nalgebra::Vector3<f32> {
 
     /// Create a new point.
     fn new(x: f32, y: f32, z: f32) -> Self {
-        nalgebra::Vector3::new(x, y, z)
+        Self::new(x, y, z)
     }
 
     /// Get the x coordinate.

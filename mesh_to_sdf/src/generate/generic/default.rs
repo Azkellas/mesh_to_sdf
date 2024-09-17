@@ -8,7 +8,7 @@ use crate::{compare_distances, geo, Point, SignMethod, Topology};
 ///
 /// Returns a vector of signed distances.
 /// Queries outside the mesh will have a positive distance, and queries inside the mesh will have a negative distance.
-pub(crate) fn generate_sdf_default<V, I>(
+pub fn generate_sdf_default<V, I>(
     vertices: &[V],
     indices: Topology<I>,
     query_points: &[V],
@@ -47,12 +47,14 @@ where
                         match sign_method {
                             SignMethod::Raycast => (
                                 min_distance.min(distance),
-                                intersection_count + ray_intersection as u32,
+                                intersection_count + u32::from(ray_intersection),
                             ),
                             SignMethod::Normal => (
                                 match compare_distances(distance, min_distance) {
-                                    std::cmp::Ordering::Less => distance,
-                                    _ => min_distance,
+                                    core::cmp::Ordering::Less => distance,
+                                    core::cmp::Ordering::Equal | core::cmp::Ordering::Greater => {
+                                        min_distance
+                                    }
                                 },
                                 intersection_count,
                             ),

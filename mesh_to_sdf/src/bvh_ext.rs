@@ -50,7 +50,7 @@ impl AabbExt for Aabb<f32, 3> {
             // Invert the signum to get the furthest vertex
             .map(|x| -x.signum())
             // Make sure we're always on a vertex and not on a face if the point is aligned with the box
-            .map(|x| if x != 0.0 { x } else { 1.0 });
+            .map(|x| if x == 0.0 { 1.0 } else { x });
 
         let furthest = center + signum.component_mul(&half_size);
         let max_dist = (n_point - furthest).norm();
@@ -65,7 +65,7 @@ pub trait BvhDistance<V: Point, Shape: Bounded<f32, 3>> {
     ///
     fn nearest_candidates(&self, origin: &V, shapes: &[Shape]) -> Vec<usize>
     where
-        Self: std::marker::Sized;
+        Self: core::marker::Sized;
 }
 
 impl<V: Point, Shape: Bounded<f32, 3>> BvhDistance<V, Shape> for Bvh<f32, 3> {
@@ -107,13 +107,14 @@ pub trait BvhTraverseDistance<V: Point, Shape: Bounded<f32, 3>> {
         best_min_distance: &mut f32,
         best_max_distance: &mut f32,
     ) where
-        Self: std::marker::Sized;
+        Self: core::marker::Sized;
 }
 
 impl<V: Point, Shape: Bounded<f32, 3>> BvhTraverseDistance<V, Shape> for BvhNode<f32, 3> {
     /// Traverses the [`Bvh`] recursively and returns all shapes whose [`Aabb`] countains
     /// a candidate shape for being the nearest to the given point.
     ///
+    #[expect(clippy::similar_names)]
     fn nearest_candidates_recursive(
         nodes: &[Self],
         node_index: usize,
@@ -123,11 +124,11 @@ impl<V: Point, Shape: Bounded<f32, 3>> BvhTraverseDistance<V, Shape> for BvhNode
         best_min_distance: &mut f32,
         best_max_distance: &mut f32,
     ) {
-        match nodes[node_index] {
-            BvhNode::Node {
-                ref child_l_aabb,
+        match &nodes[node_index] {
+            Self::Node {
+                child_l_aabb,
                 child_l_index,
-                ref child_r_aabb,
+                child_r_aabb,
                 child_r_index,
                 ..
             } => {
@@ -153,7 +154,7 @@ impl<V: Point, Shape: Bounded<f32, 3>> BvhTraverseDistance<V, Shape> for BvhNode
                     if dist_min <= *best_max_distance {
                         Self::nearest_candidates_recursive(
                             nodes,
-                            index,
+                            *index,
                             origin,
                             shapes,
                             indices,
@@ -163,8 +164,8 @@ impl<V: Point, Shape: Bounded<f32, 3>> BvhTraverseDistance<V, Shape> for BvhNode
                     }
                 }
             }
-            BvhNode::Leaf { shape_index, .. } => {
-                let aabb = shapes[shape_index].aabb();
+            Self::Leaf { shape_index, .. } => {
+                let aabb = shapes[*shape_index].aabb();
                 let (min_dist, max_dist) = aabb.get_min_max_distances(origin);
 
                 if !indices.is_empty() && max_dist < *best_min_distance {
@@ -177,7 +178,7 @@ impl<V: Point, Shape: Bounded<f32, 3>> BvhTraverseDistance<V, Shape> for BvhNode
                 *best_max_distance = best_max_distance.min(max_dist);
 
                 // we reached a leaf, we add it to the list of indices since it is a potential candidate
-                indices.push((shape_index, min_dist));
+                indices.push((*shape_index, min_dist));
             }
         }
     }

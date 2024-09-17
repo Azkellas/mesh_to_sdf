@@ -2,6 +2,8 @@ use crate::point::Point;
 
 /// Compute the bounding box of a triangle.
 pub fn triangle_bounding_box<V: Point>(a: &V, b: &V, c: &V) -> (V, V) {
+    const EPSILONF: f32 = 0.0001;
+
     let min = V::new(
         f32::min(a.x(), f32::min(b.x(), c.x())),
         f32::min(a.y(), f32::min(b.y(), c.y())),
@@ -15,7 +17,6 @@ pub fn triangle_bounding_box<V: Point>(a: &V, b: &V, c: &V) -> (V, V) {
 
     // We add a small epsilon to the max and subtract a small epsilon from the min to avoid
     // floating point errors in the bvh aabb intersection tests and make sure the aabb has a volume.
-    const EPSILONF: f32 = 0.0001;
     let epsilon = V::new(EPSILONF, EPSILONF, EPSILONF);
     (min.sub(&epsilon), max.add(&epsilon))
 }
@@ -65,6 +66,7 @@ fn triangle_normal<V: Point>(a: &V, b: &V, c: &V) -> V {
 /// Project a point onto a triangle.
 /// Adapted from Embree.
 /// <https://github.com/embree/embree/blob/master/tutorials/common/math/closest_point.h#L10>
+#[expect(clippy::many_single_char_names)]
 fn closest_point_triangle<V: Point>(p: &V, a: &V, b: &V, c: &V) -> V {
     // Add safety checks for degenerate triangles
     #[allow(clippy::match_same_arms)]

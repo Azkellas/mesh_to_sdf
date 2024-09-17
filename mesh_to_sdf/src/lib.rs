@@ -175,7 +175,7 @@ where
     /// Returns an iterator of tuples of 3 indices representing a triangle.
     fn get_triangles<V>(
         vertices: &'a [V],
-        indices: Topology<'a, I>,
+        indices: Self,
     ) -> Box<dyn Iterator<Item = (usize, usize, usize)> + Send + 'a>
     where
         V: Point,
@@ -240,7 +240,7 @@ pub enum AccelerationMethod {
 }
 
 /// Compare two signed distances, taking into account floating point errors and signs.
-fn compare_distances(a: f32, b: f32) -> std::cmp::Ordering {
+fn compare_distances(a: f32, b: f32) -> core::cmp::Ordering {
     // for a point to be inside, it has to be inside all normals of nearest triangles.
     // if one distance is positive, then the point is outside.
     // this check is sensible to floating point errors though
@@ -249,8 +249,8 @@ fn compare_distances(a: f32, b: f32) -> std::cmp::Ordering {
     if float_cmp::approx_eq!(f32, a.abs(), b.abs(), ulps = 2, epsilon = 1e-6) {
         // they are equals: return the one with the smallest distance, privileging positive distances.
         match (a.is_sign_negative(), b.is_sign_negative()) {
-            (true, false) => std::cmp::Ordering::Greater,
-            (false, true) => std::cmp::Ordering::Less,
+            (true, false) => core::cmp::Ordering::Greater,
+            (false, true) => core::cmp::Ordering::Less,
             _ => a.abs().partial_cmp(&b.abs()).unwrap(),
         }
     } else {
