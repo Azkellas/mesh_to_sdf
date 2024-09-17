@@ -1,23 +1,7 @@
 use bvh::aabb::{Aabb, Bounded};
 use bvh::bvh::{Bvh, BvhNode};
-use nalgebra::SimdPartialOrd;
 
 use crate::Point;
-
-/// Returns the signed distance to a box.
-/// See <https://iquilezles.org/articles/distfunctions/>
-fn box_sdf<V: Point>(p: &V, aabb: &Aabb<f32, 3>) -> f32 {
-    let p = nalgebra::Point3::new(p.x(), p.y(), p.z());
-    let p = p - aabb.center();
-    let q = p.abs() - aabb.size() * 0.5;
-
-    // lhs is the outside part of the box
-    let lhs = q.simd_max(nalgebra::Vector3::zeros());
-    // rhs is the inside part of the box
-    let rhs = q.max().min(0.0);
-    (lhs + nalgebra::Vector3::from_element(rhs)).norm()
-}
-
 pub trait AabbExt {
     /// Returns the minimum and maximum distances to the box.
     /// The minimum distance is the distance to the closest point on the box,
