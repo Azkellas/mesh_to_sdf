@@ -23,7 +23,7 @@ exclude = ["assets/*", "ARCHITECTURE.md"]
 float-cmp = "0.9.0"
 itertools = "0.13.0"
 log = "0.4.22"
-ordered-float = "4.2.2"
+ordered-float = "4.3.0"
 rayon = "1.10.0"
 bvh = "0.10.0"
 
